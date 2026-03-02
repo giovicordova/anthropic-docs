@@ -11,6 +11,7 @@ export interface PageSection {
   sectionAnchor: string | null;
   content: string;
   sectionOrder: number;
+  source: "platform" | "code";
 }
 
 export interface SearchResult {
@@ -40,6 +41,7 @@ export function initDatabase(): Database.Database {
       section_anchor TEXT,
       content TEXT NOT NULL,
       section_order INTEGER NOT NULL,
+      source TEXT NOT NULL DEFAULT 'platform',
       crawled_at TEXT NOT NULL
     );
 
@@ -48,6 +50,15 @@ export function initDatabase(): Database.Database {
       value TEXT NOT NULL
     );
   `);
+
+  // Migration: add source column if missing (for existing DBs)
+  const hasSource = db
+    .prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('pages') WHERE name='source'")
+    .get() as { cnt: number };
+
+  if (hasSource.cnt === 0) {
+    db.exec("ALTER TABLE pages ADD COLUMN source TEXT NOT NULL DEFAULT 'platform'");
+  }
 
   // FTS5 virtual table — check if it exists first
   const ftsExists = db
@@ -74,8 +85,8 @@ export function initDatabase(): Database.Database {
 
 export function insertPage(db: Database.Database, page: PageSection): void {
   const stmt = db.prepare(`
-    INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, crawled_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, source, crawled_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -86,6 +97,7 @@ export function insertPage(db: Database.Database, page: PageSection): void {
     page.sectionAnchor,
     page.content,
     page.sectionOrder,
+    page.source,
     new Date().toISOString()
   );
 
