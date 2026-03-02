@@ -178,12 +178,12 @@ export function getDocPage(
 
 export function listSections(
   db: Database.Database
-): { path: string; title: string }[] {
+): { path: string; title: string; source: string }[] {
   return db
     .prepare(
-      "SELECT DISTINCT path, title FROM pages ORDER BY path"
+      "SELECT DISTINCT path, title, source FROM pages ORDER BY source, path"
     )
-    .all() as { path: string; title: string }[];
+    .all() as { path: string; title: string; source: string }[];
 }
 
 export function getMetadata(

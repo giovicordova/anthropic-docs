@@ -53,7 +53,7 @@ server.registerTool(
   "search_anthropic_docs",
   {
     description:
-      "Full-text search across all indexed Anthropic documentation. Returns ranked results with page title, URL, section heading, and content snippet.",
+      "Full-text search across all indexed Anthropic documentation (API/platform docs and Claude Code docs). Returns ranked results with page title, URL, section heading, and content snippet.",
     inputSchema: {
       query: z.string().describe("Search query string"),
       limit: z
@@ -107,7 +107,7 @@ server.registerTool(
   "get_doc_page",
   {
     description:
-      "Fetch the full markdown content of a specific Anthropic documentation page by its URL path. Supports fuzzy matching.",
+      "Fetch the full markdown content of a specific documentation page by its URL path. Supports both platform.claude.com and code.claude.com docs. Supports fuzzy matching.",
     inputSchema: {
       path: z
         .string()
@@ -146,7 +146,7 @@ server.registerTool(
   "list_doc_sections",
   {
     description:
-      "List all indexed Anthropic documentation pages with their paths. Useful for discovering what documentation is available.",
+      "List all indexed documentation pages with their paths, grouped by source (Anthropic platform docs and Claude Code docs). Useful for discovering what documentation is available.",
     inputSchema: {},
   },
   async () => {
@@ -163,21 +163,33 @@ server.registerTool(
       };
     }
 
-    // Group by top-level path segment
-    const grouped: Record<string, { path: string; title: string }[]> = {};
-    for (const s of sections) {
-      // Extract category from path like /docs/en/category/...
-      const parts = s.path.split("/").filter(Boolean);
-      const category = parts.length > 2 ? parts[2] : "root";
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push(s);
+    // Group by source first, then by category within source
+    const platformPages = sections.filter((s) => s.source === "platform");
+    const codePages = sections.filter((s) => s.source === "code");
+
+    let output = `# Documentation Index\n\n${sections.length} pages indexed.\n\n`;
+
+    if (platformPages.length > 0) {
+      output += `## Anthropic API & Platform Docs\n\n`;
+      const grouped: Record<string, { path: string; title: string }[]> = {};
+      for (const s of platformPages) {
+        const parts = s.path.split("/").filter(Boolean);
+        const category = parts.length > 2 ? parts[2] : "root";
+        if (!grouped[category]) grouped[category] = [];
+        grouped[category].push(s);
+      }
+      for (const [category, pages] of Object.entries(grouped).sort()) {
+        output += `### ${category.replace(/-/g, " ")}\n\n`;
+        for (const p of pages) {
+          output += `- [${p.title}](${p.path})\n`;
+        }
+        output += "\n";
+      }
     }
 
-    let output = `# Anthropic Documentation Index\n\n${sections.length} pages indexed.\n\n`;
-
-    for (const [category, pages] of Object.entries(grouped).sort()) {
-      output += `## ${category.replace(/-/g, " ")}\n\n`;
-      for (const p of pages) {
+    if (codePages.length > 0) {
+      output += `## Claude Code Docs\n\n`;
+      for (const p of codePages) {
         output += `- [${p.title}](${p.path})\n`;
       }
       output += "\n";
@@ -194,7 +206,7 @@ server.registerTool(
   "refresh_index",
   {
     description:
-      "Re-crawl and update the local Anthropic documentation index. Runs in the background — returns immediately.",
+      "Re-crawl and update the local documentation index for both Anthropic platform docs and Claude Code docs. Runs in the background — returns immediately.",
     inputSchema: {},
   },
   async () => {
