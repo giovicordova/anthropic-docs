@@ -3,6 +3,7 @@ import { insertPage, clearPages, setMetadata } from "./database.js";
 import { htmlToMarkdown, splitIntoSections } from "./markdown.js";
 
 const SITEMAP_URL = "https://platform.claude.com/sitemap.xml";
+const CLAUDE_CODE_DOCS_URL = "https://code.claude.com/docs/llms-full.txt";
 const CONCURRENCY = 5;
 
 interface SitemapEntry {
@@ -111,6 +112,88 @@ async function processInBatches<T>(
   }
 }
 
+interface ParsedPage {
+  title: string;
+  url: string;
+  path: string;
+  content: string;
+}
+
+function parseLlmsFullTxt(text: string): ParsedPage[] {
+  const pages: ParsedPage[] = [];
+  const lines = text.split("\n");
+
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/docs/en/")) {
+      const title = lines[i].slice(2).trim();
+      const url = lines[i + 1].slice("Source: ".length).trim();
+      const path = new URL(url).pathname;
+
+      const contentLines: string[] = [];
+      i += 2;
+      while (i < lines.length) {
+        if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/docs/en/")) {
+          break;
+        }
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      const content = contentLines.join("\n").trim();
+      if (content.length > 0) {
+        pages.push({ title, url, path, content });
+      }
+    } else {
+      i++;
+    }
+  }
+
+  return pages;
+}
+
+async function crawlClaudeCodeDocs(db: Database.Database): Promise<number> {
+  console.error("[crawler] Fetching Claude Code docs from llms-full.txt...");
+
+  const response = await fetch(CLAUDE_CODE_DOCS_URL, {
+    headers: {
+      "User-Agent": "anthropic-docs-mcp/1.0 (local indexer)",
+    },
+  });
+
+  if (!response.ok) {
+    console.error(`[crawler] Failed to fetch Claude Code docs: HTTP ${response.status}`);
+    return 0;
+  }
+
+  const text = await response.text();
+  const pages = parseLlmsFullTxt(text);
+  let indexed = 0;
+
+  for (const page of pages) {
+    const sections = splitIntoSections(page.content);
+
+    for (const section of sections) {
+      insertPage(db, {
+        url: page.url,
+        path: page.path,
+        title: page.title,
+        sectionHeading: section.heading,
+        sectionAnchor: section.anchor,
+        content: section.content,
+        sectionOrder: section.order,
+        source: "code",
+      });
+    }
+
+    indexed++;
+    console.error(`[crawler] [code] Indexed: ${page.path}`);
+  }
+
+  console.error(`[crawler] Claude Code docs: indexed ${indexed} pages.`);
+  return indexed;
+}
+
 export async function crawlDocs(db: Database.Database): Promise<number> {
   const entries = await parseSitemap();
   const total = entries.length;
@@ -142,6 +225,7 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
         sectionAnchor: section.anchor,
         content: section.content,
         sectionOrder: section.order,
+        source: "platform",
       });
     }
 
@@ -149,9 +233,12 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
     console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path}`);
   });
 
-  setMetadata(db, "last_crawl_timestamp", new Date().toISOString());
-  setMetadata(db, "page_count", String(indexed));
+  const codeIndexed = await crawlClaudeCodeDocs(db);
 
-  console.error(`[crawler] Done. Indexed ${indexed}/${total} pages.`);
-  return indexed;
+  const totalIndexed = indexed + codeIndexed;
+  setMetadata(db, "last_crawl_timestamp", new Date().toISOString());
+  setMetadata(db, "page_count", String(totalIndexed));
+
+  console.error(`[crawler] Done. Indexed ${indexed} platform + ${codeIndexed} code = ${totalIndexed} total pages.`);
+  return totalIndexed;
 }
