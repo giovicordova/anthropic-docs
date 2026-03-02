@@ -125,7 +125,7 @@ function parseLlmsFullTxt(text: string): ParsedPage[] {
 
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/docs/en/")) {
+    if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/")) {
       const title = lines[i].slice(2).trim();
       const url = lines[i + 1].slice("Source: ".length).trim();
       const path = new URL(url).pathname;
@@ -133,7 +133,7 @@ function parseLlmsFullTxt(text: string): ParsedPage[] {
       const contentLines: string[] = [];
       i += 2;
       while (i < lines.length) {
-        if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/docs/en/")) {
+        if (lines[i].startsWith("# ") && i + 1 < lines.length && lines[i + 1].startsWith("Source: https://code.claude.com/")) {
           break;
         }
         contentLines.push(lines[i]);
