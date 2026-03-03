@@ -56,23 +56,36 @@ async function fetchPageContent(url: string): Promise<string | null> {
   }
 }
 
-function extractArticleContent(html: string): string | null {
-  // Extract content inside <article id="content-container">...</article>
-  // Used by standard documentation pages (guides, tutorials, concepts)
+function extractArticleContent(html: string): { html: string; isApiRef: boolean } | null {
+  // Standard docs: extract content inside <article id="content-container">
   const articleMatch = html.match(
     /<article[^>]*id=["']content-container["'][^>]*>([\s\S]*?)<\/article>/
   );
-  if (articleMatch) return articleMatch[1];
+  if (articleMatch) return { html: articleMatch[1], isApiRef: false };
 
   // Fallback: try any <article> tag
   const fallbackMatch = html.match(
     /<article[^>]*>([\s\S]*?)<\/article>/
   );
-  if (fallbackMatch) return fallbackMatch[1];
+  if (fallbackMatch) return { html: fallbackMatch[1], isApiRef: false };
 
-  // API reference pages (/api/*) use a different structure (stldocs-method-content-column)
-  // and contain massive auto-generated schema content. We intentionally skip them
-  // to keep the search index focused on actual documentation.
+  // API reference pages: extract from stldocs-root (excluding sidebar)
+  // These pages have two stldocs-root divs — one with stldocs-sidebar (nav), one without (content)
+  const stldocsMatches = html.match(
+    /<div[^>]*class="[^"]*stldocs-root(?![^"]*stldocs-sidebar)[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*stldocs-root|$)/g
+  );
+
+  if (stldocsMatches) {
+    // Find the content div (the one without stldocs-sidebar)
+    for (const match of stldocsMatches) {
+      if (!match.includes("stldocs-sidebar")) {
+        // Extract the inner content
+        const innerMatch = match.match(/<div[^>]*>([\s\S]*)/);
+        if (innerMatch) return { html: innerMatch[1], isApiRef: true };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -206,15 +219,16 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
     const html = await fetchPageContent(entry.url);
     if (!html) return;
 
-    const articleHtml = extractArticleContent(html);
-    if (!articleHtml) {
-      console.error(`[crawler] SKIP ${entry.path}: no article content found`);
+    const extracted = extractArticleContent(html);
+    if (!extracted) {
+      console.error(`[crawler] SKIP ${entry.path}: no content found`);
       return;
     }
 
     const title = extractPageTitle(html);
-    const markdown = htmlToMarkdown(articleHtml);
+    const markdown = htmlToMarkdown(extracted.html);
     const sections = splitIntoSections(markdown);
+    const source = extracted.isApiRef ? "api-reference" : "platform";
 
     for (const section of sections) {
       insertPage(db, {
@@ -225,12 +239,12 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
         sectionAnchor: section.anchor,
         content: section.content,
         sectionOrder: section.order,
-        source: "platform",
+        source,
       });
     }
 
     indexed++;
-    console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path}`);
+    console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path} (${source})`);
   });
 
   const codeIndexed = await crawlClaudeCodeDocs(db);
