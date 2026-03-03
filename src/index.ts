@@ -53,9 +53,13 @@ server.registerTool(
   "search_anthropic_docs",
   {
     description:
-      "Full-text search across all indexed Anthropic documentation (API/platform docs and Claude Code docs). Returns ranked results with page title, URL, section heading, and content snippet.",
+      "Full-text search across all indexed Anthropic documentation (API/platform docs and Claude Code docs). Returns ranked results with page title, URL, section heading, and content snippet. Use this tool when you need to find documentation about a specific topic, API endpoint, SDK method, or concept. Results are ranked by relevance using BM25 with title matches weighted highest. For broad queries, increase the limit; for precise lookups, use get_doc_page instead.",
     inputSchema: {
-      query: z.string().describe("Search query string"),
+      query: z.string().describe("Search query string. Use specific terms for best results — e.g., 'tool use streaming' rather than 'how to stream tools'. Avoid FTS5 operators (OR, AND, NOT) as queries are auto-preprocessed."),
+      source: z
+        .enum(["all", "platform", "code", "api-reference"])
+        .default("all")
+        .describe("Filter results by documentation source: 'platform' for API/platform guides, 'code' for Claude Code docs, 'api-reference' for API endpoint reference, or 'all' (default)."),
       limit: z
         .number()
         .min(1)
@@ -64,16 +68,16 @@ server.registerTool(
         .describe("Maximum number of results (default 10)"),
     },
   },
-  async ({ query, limit }) => {
+  async ({ query, source, limit }) => {
     try {
-      const results = searchDocs(db, query, limit);
+      const results = searchDocs(db, query, limit, source);
 
       if (results.length === 0) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `No results found for "${query}". The index may still be building — try again in a minute, or use refresh_index to re-crawl.`,
+              text: `No results found for "${query}"${source !== "all" ? ` in ${source} docs` : ""}. Try different terms, or use refresh_index to re-crawl if the index is stale.`,
             },
           ],
         };
@@ -94,7 +98,7 @@ server.registerTool(
         content: [
           {
             type: "text" as const,
-            text: `Search error: ${(err as Error).message}. The query syntax may be invalid for FTS5 — try simpler terms.`,
+            text: `Search error: ${(err as Error).message}. Try simpler search terms.`,
           },
         ],
       };
@@ -107,7 +111,7 @@ server.registerTool(
   "get_doc_page",
   {
     description:
-      "Fetch the full markdown content of a specific documentation page by its URL path. Supports both platform.claude.com and code.claude.com docs. Supports fuzzy matching.",
+      "Fetch the full markdown content of a specific documentation page by its URL path. Supports both platform.claude.com and code.claude.com docs. Use this when you already know which page you need — for example, after finding it via search_anthropic_docs or list_doc_sections. Supports fuzzy matching on the path suffix, so '/tool-use' will match '/docs/en/agents-and-tools/tool-use/overview'. Returns the complete page content concatenated from all sections.",
     inputSchema: {
       path: z
         .string()
@@ -146,7 +150,7 @@ server.registerTool(
   "list_doc_sections",
   {
     description:
-      "List all indexed documentation pages with their paths, grouped by source (Anthropic platform docs and Claude Code docs). Useful for discovering what documentation is available.",
+      "List all indexed documentation pages with their paths, grouped by source (Anthropic platform docs, Claude Code docs, and API reference). Use this to discover what documentation is available, browse by category, or find the correct path for get_doc_page. Returns a structured index of all pages — no search query needed.",
     inputSchema: {},
   },
   async () => {
@@ -163,14 +167,14 @@ server.registerTool(
       };
     }
 
-    // Group by source first, then by category within source
     const platformPages = sections.filter((s) => s.source === "platform");
     const codePages = sections.filter((s) => s.source === "code");
+    const apiRefPages = sections.filter((s) => s.source === "api-reference");
 
     let output = `# Documentation Index\n\n${sections.length} pages indexed.\n\n`;
 
     if (platformPages.length > 0) {
-      output += `## Anthropic API & Platform Docs\n\n`;
+      output += `## Anthropic Platform Docs (${platformPages.length} pages)\n\n`;
       const grouped: Record<string, { path: string; title: string }[]> = {};
       for (const s of platformPages) {
         const parts = s.path.split("/").filter(Boolean);
@@ -187,8 +191,16 @@ server.registerTool(
       }
     }
 
+    if (apiRefPages.length > 0) {
+      output += `## API Reference (${apiRefPages.length} pages)\n\n`;
+      for (const p of apiRefPages) {
+        output += `- [${p.title}](${p.path})\n`;
+      }
+      output += "\n";
+    }
+
     if (codePages.length > 0) {
-      output += `## Claude Code Docs\n\n`;
+      output += `## Claude Code Docs (${codePages.length} pages)\n\n`;
       for (const p of codePages) {
         output += `- [${p.title}](${p.path})\n`;
       }
@@ -206,7 +218,7 @@ server.registerTool(
   "refresh_index",
   {
     description:
-      "Re-crawl and update the local documentation index for both Anthropic platform docs and Claude Code docs. Runs in the background — returns immediately.",
+      "Re-crawl and update the local documentation index for all sources: Anthropic platform docs, Claude Code docs, and API reference pages. Runs in the background and returns immediately — search results will update as pages are re-indexed. Use this if search results seem stale or if you know documentation has been updated recently. The index auto-refreshes every 7 days.",
     inputSchema: {},
   },
   async () => {
