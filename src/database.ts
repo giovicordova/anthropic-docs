@@ -1,7 +1,9 @@
 import Database from "better-sqlite3";
 import path from "node:path";
-import os from "node:os";
 import fs from "node:fs";
+import { DB_DIR } from "./config.js";
+
+const DB_PATH = path.join(DB_DIR, "docs.db");
 
 export interface PageSection {
   url: string;
@@ -22,8 +24,9 @@ export interface SearchResult {
   relevanceScore: number;
 }
 
-const DB_DIR = path.join(os.homedir(), ".claude", "mcp-data", "anthropic-docs");
-const DB_PATH = path.join(DB_DIR, "docs.db");
+export type GetDocPageResult =
+  | { type: "page"; title: string; url: string; content: string }
+  | { type: "disambiguation"; matches: { path: string; title: string; url: string }[] };
 
 export function initDatabase(): Database.Database {
   fs.mkdirSync(DB_DIR, { recursive: true });
@@ -42,6 +45,7 @@ export function initDatabase(): Database.Database {
       content TEXT NOT NULL,
       section_order INTEGER NOT NULL,
       source TEXT NOT NULL DEFAULT 'platform',
+      generation INTEGER NOT NULL DEFAULT 0,
       crawled_at TEXT NOT NULL
     );
 
@@ -51,16 +55,20 @@ export function initDatabase(): Database.Database {
     );
   `);
 
-  // Migration: add source column if missing (for existing DBs)
-  const hasSource = db
-    .prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('pages') WHERE name='source'")
-    .get() as { cnt: number };
+  // Migrations for existing DBs
+  const columns = db
+    .prepare("SELECT name FROM pragma_table_info('pages')")
+    .all() as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
 
-  if (hasSource.cnt === 0) {
+  if (!columnNames.has("source")) {
     db.exec("ALTER TABLE pages ADD COLUMN source TEXT NOT NULL DEFAULT 'platform'");
   }
+  if (!columnNames.has("generation")) {
+    db.exec("ALTER TABLE pages ADD COLUMN generation INTEGER NOT NULL DEFAULT 0");
+  }
 
-  // FTS5 virtual table — check if it exists first
+  // FTS5 virtual table
   const ftsExists = db
     .prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='pages_fts'"
@@ -80,58 +88,76 @@ export function initDatabase(): Database.Database {
     `);
   }
 
+  // Indexes for common queries
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pages_path ON pages(path);
+    CREATE INDEX IF NOT EXISTS idx_pages_source ON pages(source);
+    CREATE INDEX IF NOT EXISTS idx_pages_generation ON pages(generation);
+  `);
+
   return db;
 }
 
-export function insertPage(db: Database.Database, page: PageSection): void {
-  const stmt = db.prepare(`
-    INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, source, crawled_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const result = stmt.run(
-    page.url,
-    page.path,
-    page.title,
-    page.sectionHeading,
-    page.sectionAnchor,
-    page.content,
-    page.sectionOrder,
-    page.source,
-    new Date().toISOString()
-  );
-
-  // Insert into FTS index
-  db.prepare(`
-    INSERT INTO pages_fts (rowid, title, section_heading, content)
-    VALUES (?, ?, ?, ?)
-  `).run(
-    result.lastInsertRowid,
-    page.title,
-    page.sectionHeading || "",
-    page.content
-  );
+export function getCurrentGeneration(db: Database.Database): number {
+  const row = db
+    .prepare("SELECT value FROM metadata WHERE key = 'current_generation'")
+    .get() as { value: string } | undefined;
+  return row ? parseInt(row.value, 10) : 0;
 }
 
-export function clearPages(db: Database.Database): void {
-  db.exec("DELETE FROM pages");
-  db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+export function insertPage(db: Database.Database, page: PageSection, generation: number): void {
+  const doInsert = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, source, generation, crawled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      page.url,
+      page.path,
+      page.title,
+      page.sectionHeading,
+      page.sectionAnchor,
+      page.content,
+      page.sectionOrder,
+      page.source,
+      generation,
+      new Date().toISOString()
+    );
+
+    db.prepare(`
+      INSERT INTO pages_fts (rowid, title, section_heading, content)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      result.lastInsertRowid,
+      page.title,
+      page.sectionHeading || "",
+      page.content
+    );
+  });
+
+  doInsert();
+}
+
+export function finalizeGeneration(db: Database.Database, keepGeneration: number): void {
+  const finalize = db.transaction(() => {
+    db.prepare("DELETE FROM pages WHERE generation != ?").run(keepGeneration);
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+    db.prepare(
+      "INSERT OR REPLACE INTO metadata (key, value) VALUES ('current_generation', ?)"
+    ).run(String(keepGeneration));
+  });
+  finalize();
 }
 
 function preprocessQuery(query: string): string {
-  // Remove characters that break FTS5 syntax
   let cleaned = query
-    .replace(/[*"():^~{}[\]]/g, " ")  // Remove FTS5 special chars
-    .replace(/\s+/g, " ")              // Collapse whitespace
+    .replace(/[*"():^~{}[\]]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
   if (cleaned.length === 0) return '""';
 
-  // Split into terms, filter empties
   const terms = cleaned.split(" ").filter((t) => t.length > 0);
 
-  // If multiple terms, wrap each in quotes to avoid FTS5 operator conflicts
-  // (words like "OR", "AND", "NOT" are FTS5 operators)
   if (terms.length > 1) {
     return terms.map((t) => `"${t}"`).join(" ");
   }
@@ -183,35 +209,66 @@ export function searchDocs(
 export function getDocPage(
   db: Database.Database,
   searchPath: string
-): { title: string; url: string; content: string } | null {
-  // Try exact match first
+): GetDocPageResult | null {
+  // 1. Exact match
   let rows = db
     .prepare(
-      "SELECT title, url, content FROM pages WHERE path = ? ORDER BY section_order"
+      "SELECT title, url, path, content FROM pages WHERE path = ? ORDER BY section_order"
     )
     .all(searchPath) as any[];
 
-  // Fuzzy: try matching the end of the path
+  // 2. Suffix match (path ends with search term)
   if (rows.length === 0) {
     rows = db
       .prepare(
-        "SELECT title, url, content FROM pages WHERE path LIKE ? ORDER BY section_order"
+        "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
       )
       .all(`%${searchPath}`) as any[];
   }
 
+  // 3. Segment match (search term appears as a directory segment)
+  if (rows.length === 0) {
+    rows = db
+      .prepare(
+        "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
+      )
+      .all(`%${searchPath}/%`) as any[];
+  }
+
   if (rows.length === 0) return null;
 
-  return {
-    title: rows[0].title,
-    url: rows[0].url,
-    content: rows.map((r: any) => r.content).join("\n\n"),
-  };
+  // Check if results span multiple distinct pages
+  const distinctPaths = [...new Set(rows.map((r: any) => r.path))];
+
+  if (distinctPaths.length === 1) {
+    return {
+      type: "page",
+      title: rows[0].title,
+      url: rows[0].url,
+      content: rows.map((r: any) => r.content).join("\n\n"),
+    };
+  }
+
+  // Multiple pages matched — return disambiguation list
+  const matches = distinctPaths.map((p) => {
+    const row = rows.find((r: any) => r.path === p);
+    return { path: p, title: row.title, url: row.url };
+  });
+
+  return { type: "disambiguation", matches };
 }
 
 export function listSections(
-  db: Database.Database
+  db: Database.Database,
+  source?: string
 ): { path: string; title: string; source: string }[] {
+  if (source && source !== "all") {
+    return db
+      .prepare(
+        "SELECT DISTINCT path, title, source FROM pages WHERE source = ? ORDER BY source, path"
+      )
+      .all(source) as { path: string; title: string; source: string }[];
+  }
   return db
     .prepare(
       "SELECT DISTINCT path, title, source FROM pages ORDER BY source, path"

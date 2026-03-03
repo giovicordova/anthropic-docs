@@ -1,4 +1,5 @@
 import TurndownService from "turndown";
+import { MAX_SECTION_SIZE, MIN_SECTION_SIZE } from "./config.js";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -50,8 +51,8 @@ export function splitIntoSections(markdown: string): Section[] {
 
   function flushSection() {
     const content = currentLines.join("\n").trim();
-    // Filter out stub sections with less than 50 chars of real content
-    if (content.length < 50) return;
+    // Filter out stub sections with less than MIN_SECTION_SIZE chars of real content
+    if (content.length < MIN_SECTION_SIZE) return;
     sections.push({
       heading: currentHeading,
       anchor: currentAnchor,
@@ -77,8 +78,7 @@ export function splitIntoSections(markdown: string): Section[] {
   }
   flushSection();
 
-  // Post-process: split oversized sections (>6KB) at h4 boundaries
-  const MAX_SECTION_SIZE = 6000;
+  // Post-process: split oversized sections at h4 boundaries
   const result: Section[] = [];
   for (const section of sections) {
     if (section.content.length <= MAX_SECTION_SIZE) {
@@ -97,7 +97,7 @@ export function splitIntoSections(markdown: string): Section[] {
       const h4Match = subLine.match(/^(####)\s+(.+)$/);
       if (h4Match && subContent.join("\n").trim().length >= 200) {
         const chunk = subContent.join("\n").trim();
-        if (chunk.length >= 50) {
+        if (chunk.length >= MIN_SECTION_SIZE) {
           result.push({
             heading: subHeading,
             anchor: subAnchor,
@@ -118,7 +118,7 @@ export function splitIntoSections(markdown: string): Section[] {
     }
     // Flush remaining
     const remaining = subContent.join("\n").trim();
-    if (remaining.length >= 50) {
+    if (remaining.length >= MIN_SECTION_SIZE) {
       result.push({
         heading: didSplit ? subHeading : section.heading,
         anchor: didSplit ? subAnchor : section.anchor,

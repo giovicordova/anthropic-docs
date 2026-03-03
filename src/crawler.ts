@@ -1,33 +1,36 @@
 import type Database from "better-sqlite3";
-import { insertPage, clearPages, setMetadata } from "./database.js";
+import { insertPage, getCurrentGeneration, finalizeGeneration, setMetadata } from "./database.js";
 import { htmlToMarkdown, splitIntoSections } from "./markdown.js";
-
-const SITEMAP_URL = "https://platform.claude.com/sitemap.xml";
-const CLAUDE_CODE_DOCS_URL = "https://code.claude.com/docs/llms-full.txt";
-const CONCURRENCY = 5;
+import { SITEMAP_URL, CLAUDE_CODE_DOCS_URL, CONCURRENCY, FETCH_TIMEOUT_MS } from "./config.js";
 
 interface SitemapEntry {
   url: string;
   path: string;
 }
 
+function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timeout)
+  );
+}
+
 export async function parseSitemap(): Promise<SitemapEntry[]> {
   console.error("[crawler] Fetching sitemap...");
-  const response = await fetch(SITEMAP_URL);
+  const response = await fetchWithTimeout(SITEMAP_URL);
   if (!response.ok) {
     throw new Error(`Failed to fetch sitemap: ${response.status}`);
   }
 
   const xml = await response.text();
 
-  // Simple XML parsing — extract <loc> tags
   const urls: SitemapEntry[] = [];
   const locRegex = /<loc>(.*?)<\/loc>/g;
   let match;
 
   while ((match = locRegex.exec(xml)) !== null) {
     const url = match[1];
-    // Filter to English docs only
     if (url.includes("/docs/en/")) {
       const urlObj = new URL(url);
       urls.push({ url, path: urlObj.pathname });
@@ -40,7 +43,7 @@ export async function parseSitemap(): Promise<SitemapEntry[]> {
 
 async function fetchPageContent(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "anthropic-docs-mcp/1.0 (local indexer)",
       },
@@ -57,29 +60,23 @@ async function fetchPageContent(url: string): Promise<string | null> {
 }
 
 function extractArticleContent(html: string): { html: string; isApiRef: boolean } | null {
-  // Standard docs: extract content inside <article id="content-container">
   const articleMatch = html.match(
     /<article[^>]*id=["']content-container["'][^>]*>([\s\S]*?)<\/article>/
   );
   if (articleMatch) return { html: articleMatch[1], isApiRef: false };
 
-  // Fallback: try any <article> tag
   const fallbackMatch = html.match(
     /<article[^>]*>([\s\S]*?)<\/article>/
   );
   if (fallbackMatch) return { html: fallbackMatch[1], isApiRef: false };
 
-  // API reference pages: extract from stldocs-root (excluding sidebar)
-  // These pages have two stldocs-root divs — one with stldocs-sidebar (nav), one without (content)
   const stldocsMatches = html.match(
     /<div[^>]*class="[^"]*stldocs-root(?![^"]*stldocs-sidebar)[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*stldocs-root|$)/g
   );
 
   if (stldocsMatches) {
-    // Find the content div (the one without stldocs-sidebar)
     for (const match of stldocsMatches) {
       if (!match.includes("stldocs-sidebar")) {
-        // Extract the inner content
         const innerMatch = match.match(/<div[^>]*>([\s\S]*)/);
         if (innerMatch) return { html: innerMatch[1], isApiRef: true };
       }
@@ -90,14 +87,11 @@ function extractArticleContent(html: string): { html: string; isApiRef: boolean 
 }
 
 function extractPageTitle(html: string): string {
-  // Try <h1> first
   const h1Match = html.match(/<h1[^>]*>(.*?)<\/h1>/s);
   if (h1Match) {
-    // Strip HTML tags from the h1 content
     return h1Match[1].replace(/<[^>]+>/g, "").trim();
   }
 
-  // Fallback to <title>
   const titleMatch = html.match(/<title>(.*?)<\/title>/);
   if (titleMatch) return titleMatch[1].replace(/ \|.*$/, "").trim();
 
@@ -165,10 +159,10 @@ function parseLlmsFullTxt(text: string): ParsedPage[] {
   return pages;
 }
 
-async function crawlClaudeCodeDocs(db: Database.Database): Promise<number> {
+async function crawlClaudeCodeDocs(db: Database.Database, generation: number): Promise<number> {
   console.error("[crawler] Fetching Claude Code docs from llms-full.txt...");
 
-  const response = await fetch(CLAUDE_CODE_DOCS_URL, {
+  const response = await fetchWithTimeout(CLAUDE_CODE_DOCS_URL, {
     headers: {
       "User-Agent": "anthropic-docs-mcp/1.0 (local indexer)",
     },
@@ -196,7 +190,7 @@ async function crawlClaudeCodeDocs(db: Database.Database): Promise<number> {
         content: section.content,
         sectionOrder: section.order,
         source: "code",
-      });
+      }, generation);
     }
 
     indexed++;
@@ -208,14 +202,16 @@ async function crawlClaudeCodeDocs(db: Database.Database): Promise<number> {
 }
 
 export async function crawlDocs(db: Database.Database): Promise<number> {
+  const currentGen = getCurrentGeneration(db);
+  const newGen = currentGen + 1;
+
   const entries = await parseSitemap();
   const total = entries.length;
   let indexed = 0;
 
-  console.error(`[crawler] Starting crawl of ${total} pages...`);
-  clearPages(db);
+  console.error(`[crawler] Starting crawl of ${total} pages (generation ${newGen})...`);
 
-  await processInBatches(entries, CONCURRENCY, async (entry, i) => {
+  await processInBatches(entries, CONCURRENCY, async (entry) => {
     const html = await fetchPageContent(entry.url);
     if (!html) return;
 
@@ -240,14 +236,17 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
         content: section.content,
         sectionOrder: section.order,
         source,
-      });
+      }, newGen);
     }
 
     indexed++;
     console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path} (${source})`);
   });
 
-  const codeIndexed = await crawlClaudeCodeDocs(db);
+  const codeIndexed = await crawlClaudeCodeDocs(db, newGen);
+
+  // Atomically swap to new generation — delete old rows, rebuild FTS
+  finalizeGeneration(db, newGen);
 
   const totalIndexed = indexed + codeIndexed;
   setMetadata(db, "last_crawl_timestamp", new Date().toISOString());

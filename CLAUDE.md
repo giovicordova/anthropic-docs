@@ -27,12 +27,13 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
             code.claude.com/docs/llms-full.txt
 ```
 
-Four source files, each with a single responsibility:
+Five source files, each with a single responsibility:
 
-- **src/index.ts** — MCP server entry point. Registers 4 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`), manages stdio transport, triggers daily staleness check on startup.
-- **src/crawler.ts** — Fetches pages from 3 sources (platform docs via `<article>`, API reference via `<div class="stldocs-root">`, Claude Code docs via llms-full.txt). Runs with 5 concurrent requests.
-- **src/database.ts** — SQLite schema, FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, metadata tracking. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
-- **src/markdown.ts** — HTML→Markdown via Turndown, section splitting at h2/h3 boundaries, stub filtering (<50 chars), oversized section splitting at h4 (>6KB threshold).
+- **src/config.ts** — Centralized constants (timeouts, concurrency, URLs, thresholds, DB path). All magic numbers live here.
+- **src/index.ts** — MCP server entry point. Registers 4 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`), manages stdio transport, crawl state tracking (idle/crawling/failed), first-run detection, and daily staleness check.
+- **src/crawler.ts** — Fetches pages from 3 sources (platform docs via `<article>`, API reference via `<div class="stldocs-root">`, Claude Code docs via llms-full.txt). Uses generation-based atomic crawl (old data preserved until new crawl completes). All fetches have 15s timeouts.
+- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap, FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, `get_doc_page` with 3-step fuzzy matching + disambiguation, metadata tracking. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
+- **src/markdown.ts** — HTML→Markdown via Turndown, section splitting at h2/h3 boundaries, stub filtering, oversized section splitting at h4.
 
 ## Key Conventions
 

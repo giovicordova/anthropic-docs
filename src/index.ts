@@ -10,6 +10,7 @@ import {
   getMetadata,
 } from "./database.js";
 import { crawlDocs } from "./crawler.js";
+import { STALE_DAYS } from "./config.js";
 
 const server = new McpServer({
   name: "anthropic-docs",
@@ -18,15 +19,46 @@ const server = new McpServer({
 
 const db = initDatabase();
 
-// Check if we need to crawl on startup
-const STALE_DAYS = 1;
+// --- Crawl state management ---
+type CrawlState = "idle" | "crawling" | "failed";
+let crawlState: CrawlState = "idle";
+
+async function startCrawl(): Promise<number> {
+  if (crawlState === "crawling") {
+    console.error("[server] Crawl already in progress, skipping.");
+    return -1;
+  }
+  crawlState = "crawling";
+  try {
+    const result = await crawlDocs(db);
+    crawlState = "idle";
+    return result;
+  } catch (err) {
+    crawlState = "failed";
+    throw err;
+  }
+}
+
+function firstRunBuildingResponse(): { content: { type: "text"; text: string }[] } | null {
+  if (!getMetadata(db, "last_crawl_timestamp") && crawlState === "crawling") {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: "Index is being built for the first time (~30-60s). Try again shortly.",
+        },
+      ],
+    };
+  }
+  return null;
+}
 
 function checkAndCrawl() {
   const lastCrawl = getMetadata(db, "last_crawl_timestamp");
 
   if (!lastCrawl) {
     console.error("[server] No index found. Starting initial crawl...");
-    crawlDocs(db).catch((err) =>
+    startCrawl().catch((err) =>
       console.error("[server] Crawl failed:", err.message)
     );
     return;
@@ -39,7 +71,7 @@ function checkAndCrawl() {
     console.error(
       `[server] Index is ${Math.round(staleDays)} days old. Refreshing in background...`
     );
-    crawlDocs(db).catch((err) =>
+    startCrawl().catch((err) =>
       console.error("[server] Background crawl failed:", err.message)
     );
   } else {
@@ -70,6 +102,9 @@ server.registerTool(
     },
   },
   async ({ query, source, limit }) => {
+    const building = firstRunBuildingResponse();
+    if (building) return building;
+
     try {
       const results = searchDocs(db, query, limit, source);
 
@@ -122,6 +157,9 @@ server.registerTool(
     },
   },
   async ({ path: docPath }) => {
+    const building = firstRunBuildingResponse();
+    if (building) return building;
+
     const result = getDocPage(db, docPath);
 
     if (!result) {
@@ -130,6 +168,20 @@ server.registerTool(
           {
             type: "text" as const,
             text: `Page not found: "${docPath}". Use search_anthropic_docs to find the correct path, or list_doc_sections to browse available pages.`,
+          },
+        ],
+      };
+    }
+
+    if (result.type === "disambiguation") {
+      const list = result.matches
+        .map((m) => `- **${m.title}** — \`${m.path}\``)
+        .join("\n");
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Multiple pages match "${docPath}". Use the exact path:\n\n${list}`,
           },
         ],
       };
@@ -152,10 +204,18 @@ server.registerTool(
   {
     description:
       "List all indexed documentation pages with their paths, grouped by source (Anthropic platform docs, Claude Code docs, and API reference). Use this to discover what documentation is available, browse by category, or find the correct path for get_doc_page. Returns a structured index of all pages — no search query needed.",
-    inputSchema: {},
+    inputSchema: {
+      source: z
+        .enum(["all", "platform", "code", "api-reference"])
+        .default("all")
+        .describe("Filter results by documentation source: 'platform' for API/platform guides, 'code' for Claude Code docs, 'api-reference' for API endpoint reference, or 'all' (default)."),
+    },
   },
-  async () => {
-    const sections = listSections(db);
+  async ({ source }) => {
+    const building = firstRunBuildingResponse();
+    if (building) return building;
+
+    const sections = listSections(db, source);
 
     if (sections.length === 0) {
       return {
@@ -223,11 +283,21 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
+    if (crawlState === "crawling") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "A crawl is already in progress. Please wait for it to complete.",
+          },
+        ],
+      };
+    }
+
     const lastCrawl = getMetadata(db, "last_crawl_timestamp");
     const pageCount = getMetadata(db, "page_count") || "unknown";
 
-    // Start crawl in background (don't await)
-    crawlDocs(db).catch((err) =>
+    startCrawl().catch((err) =>
       console.error("[server] Refresh crawl failed:", err.message)
     );
 
