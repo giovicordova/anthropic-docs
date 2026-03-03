@@ -1,19 +1,22 @@
 {
   "name": "anthropic-docs-mcp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
+  "description": "MCP server that indexes Anthropic documentation into a searchable SQLite FTS5 database for Claude Code",
+  "main": "dist/index.js",
+  "bin": {
+    "anthropic-docs-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["mcp", "anthropic", "claude", "documentation", "claude-code"],
+  "author": "giovicordova",
   "license": "ISC",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -18,7 +19,7 @@ const server = new McpServer({
 const db = initDatabase();
 
 // Check if we need to crawl on startup
-const STALE_DAYS = 7;
+const STALE_DAYS = 1;
 
 function checkAndCrawl() {
   const lastCrawl = getMetadata(db, "last_crawl_timestamp");
@@ -218,7 +219,7 @@ server.registerTool(
   "refresh_index",
   {
     description:
-      "Re-crawl and update the local documentation index for all sources: Anthropic platform docs, Claude Code docs, and API reference pages. Runs in the background and returns immediately — search results will update as pages are re-indexed. Use this if search results seem stale or if you know documentation has been updated recently. The index auto-refreshes every 7 days.",
+      "Re-crawl and update the local documentation index for both Anthropic platform docs and Claude Code docs. Runs in the background — returns immediately. Use this if search results seem stale or if you know documentation has been updated recently. The index auto-refreshes daily on startup.",
     inputSchema: {},
   },
   async () => {

@@ -21,7 +21,7 @@ No test suite exists yet.
 ```
 Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
                            ↑
-                      Crawler (background, on startup if stale >7 days)
+                      Crawler (background, on startup if stale >1 day)
                            ↑
             platform.claude.com/sitemap.xml
             code.claude.com/docs/llms-full.txt
@@ -29,7 +29,7 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
 
 Four source files, each with a single responsibility:
 
-- **src/index.ts** — MCP server entry point. Registers 4 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`), manages stdio transport, triggers staleness check on startup.
+- **src/index.ts** — MCP server entry point. Registers 4 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`), manages stdio transport, triggers daily staleness check on startup.
 - **src/crawler.ts** — Fetches pages from 3 sources (platform docs via `<article>`, API reference via `<div class="stldocs-root">`, Claude Code docs via llms-full.txt). Runs with 5 concurrent requests.
 - **src/database.ts** — SQLite schema, FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, metadata tracking. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
 - **src/markdown.ts** — HTML→Markdown via Turndown, section splitting at h2/h3 boundaries, stub filtering (<50 chars), oversized section splitting at h4 (>6KB threshold).

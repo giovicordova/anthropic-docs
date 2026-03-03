@@ -1,74 +1,75 @@
 # anthropic-docs-mcp
 
-A local MCP server that indexes Anthropic's documentation into a searchable SQLite database. Gives Claude Code instant access to platform docs, API reference, and Claude Code docs — no web fetching needed.
+MCP server that indexes Anthropic's documentation into a searchable SQLite database. Gives Claude Code instant access to platform docs, API reference, and Claude Code docs — no web fetching needed.
 
-## What It Does
-
-Crawls three documentation sources, splits pages into sections, and stores them in a SQLite FTS5 full-text search index. Exposes four tools over the Model Context Protocol:
-
-| Tool | Purpose |
-|------|---------|
-| `search_anthropic_docs` | Full-text search with BM25 ranking across all indexed docs |
-| `get_doc_page` | Fetch the full markdown content of a specific page by path |
-| `list_doc_sections` | Browse all indexed pages grouped by source and category |
-| `refresh_index` | Trigger a background re-crawl of all documentation sources |
-
-## Setup
+## Install
 
 ### Prerequisites
 
 - Node.js 18+
-- npm
+- [Claude Code](https://claude.ai/code)
 
-### Install
+### 1. Clone and build
 
 ```bash
 git clone https://github.com/giovicordova/anthropic-docs.git
-cd anthropic-docs-mcp
+cd anthropic-docs
 npm install
 npm run build
 ```
 
-### Configure Claude Code
+### 2. Add to Claude Code
 
-Add to your `~/.claude/.mcp.json`:
+Open your Claude Code MCP config:
+
+```bash
+code ~/.claude/.mcp.json
+# or: nano ~/.claude/.mcp.json
+```
+
+Add the server (replace `/path/to/` with where you cloned the repo):
 
 ```json
 {
   "mcpServers": {
     "anthropic-docs": {
       "command": "node",
-      "args": ["/absolute/path/to/anthropic-docs-mcp/dist/index.js"]
+      "args": ["/path/to/anthropic-docs/dist/index.js"]
     }
   }
 }
 ```
 
-Restart Claude Code. The server will automatically crawl and index docs on first run.
+### 3. Restart Claude Code
 
-## How It Works
+The server will automatically crawl and index all docs on first run. This takes about a minute. After that, the index refreshes daily in the background.
+
+## Tools
+
+| Tool | What it does |
+|------|-------------|
+| `search_anthropic_docs` | Full-text search across all docs with BM25 ranking |
+| `get_doc_page` | Get the full markdown of a specific page by path |
+| `list_doc_sections` | Browse all indexed pages grouped by source |
+| `refresh_index` | Trigger a manual re-crawl if you need the latest |
+
+## How it works
 
 ```
-Claude Code ↔ stdio ↔ MCP Server ↔ SQLite FTS5 Database
-                           ↑
-                      Background crawler
-                           ↑
-            platform.claude.com/sitemap.xml
-            code.claude.com/docs/llms-full.txt
+Claude Code <-> stdio <-> MCP Server <-> SQLite FTS5 Database
+                              |
+                         Background crawler
+                              |
+               platform.claude.com/sitemap.xml
+               code.claude.com/docs/llms-full.txt
 ```
 
-- **Platform docs** are extracted from `platform.claude.com` via sitemap
-- **API reference** pages are detected and extracted from the same sitemap
+- **Platform docs** and **API reference** are crawled from `platform.claude.com` via its sitemap
 - **Claude Code docs** come from `code.claude.com/docs/llms-full.txt`
-
-Pages are split into sections at h2/h3 headings for fine-grained search results. The database auto-refreshes when older than 7 days.
-
-## Search Features
-
-- **Weighted BM25 ranking** — title matches score 10x, section headings 5x, content 1x
-- **Source filtering** — search across all docs or limit to `platform`, `code`, or `api-reference`
-- **Fuzzy path matching** — `get_doc_page` finds pages by suffix when exact path doesn't match
-- **Context snippets** — search results include 25-token snippets around the match
+- Pages are split into sections at h2/h3 headings for precise search results
+- BM25 ranking weights title matches 10x and headings 5x over content
+- The index auto-refreshes daily on startup; call `refresh_index` anytime for an immediate update
+- Database lives at `~/.claude/mcp-data/anthropic-docs/docs.db`
 
 ## License
 
