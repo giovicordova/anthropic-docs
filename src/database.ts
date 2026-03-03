@@ -11,7 +11,7 @@ export interface PageSection {
   sectionAnchor: string | null;
   content: string;
   sectionOrder: number;
-  source: "platform" | "code";
+  source: "platform" | "code" | "api-reference";
 }
 
 export interface SearchResult {
@@ -118,27 +118,60 @@ export function clearPages(db: Database.Database): void {
   db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
 }
 
+function preprocessQuery(query: string): string {
+  // Remove characters that break FTS5 syntax
+  let cleaned = query
+    .replace(/[*"():^~{}[\]]/g, " ")  // Remove FTS5 special chars
+    .replace(/\s+/g, " ")              // Collapse whitespace
+    .trim();
+
+  if (cleaned.length === 0) return '""';
+
+  // Split into terms, filter empties
+  const terms = cleaned.split(" ").filter((t) => t.length > 0);
+
+  // If multiple terms, wrap each in quotes to avoid FTS5 operator conflicts
+  // (words like "OR", "AND", "NOT" are FTS5 operators)
+  if (terms.length > 1) {
+    return terms.map((t) => `"${t}"`).join(" ");
+  }
+
+  return terms[0];
+}
+
 export function searchDocs(
   db: Database.Database,
   query: string,
-  limit: number = 10
+  limit: number = 10,
+  source?: string
 ): SearchResult[] {
-  // bm25() weights: title (10x), section_heading (5x), content (1x)
+  const ftsQuery = preprocessQuery(query);
+
+  const sourceFilter = source && source !== "all"
+    ? "AND p.source = ?"
+    : "";
+
   const stmt = db.prepare(`
     SELECT
       p.title,
       p.url,
       p.section_heading,
-      snippet(pages_fts, 2, '<mark>', '</mark>', '...', 40) as snippet,
+      p.source,
+      snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
       bm25(pages_fts, 10.0, 5.0, 1.0) as rank
     FROM pages_fts
     JOIN pages p ON p.id = pages_fts.rowid
     WHERE pages_fts MATCH ?
+    ${sourceFilter}
     ORDER BY rank
     LIMIT ?
   `);
 
-  return stmt.all(query, limit).map((row: any) => ({
+  const params: any[] = [ftsQuery];
+  if (source && source !== "all") params.push(source);
+  params.push(limit);
+
+  return stmt.all(...params).map((row: any) => ({
     title: row.title,
     url: row.url,
     sectionHeading: row.section_heading,
