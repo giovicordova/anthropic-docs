@@ -41,7 +41,6 @@ export function htmlToMarkdown(html: string): string {
 }
 
 export function splitIntoSections(markdown: string): Section[] {
-  // Split at ## and ### headings
   const lines = markdown.split("\n");
   const sections: Section[] = [];
   let currentHeading: string | null = null;
@@ -51,22 +50,22 @@ export function splitIntoSections(markdown: string): Section[] {
 
   function flushSection() {
     const content = currentLines.join("\n").trim();
-    if (content.length > 0) {
-      sections.push({
-        heading: currentHeading,
-        anchor: currentAnchor,
-        content,
-        order: order++,
-      });
-    }
+    // Filter out stub sections with less than 50 chars of real content
+    if (content.length < 50) return;
+    sections.push({
+      heading: currentHeading,
+      anchor: currentAnchor,
+      content,
+      order: order++,
+    });
   }
 
   for (const line of lines) {
+    // Split at ## and ### headings
     const headingMatch = line.match(/^(#{2,3})\s+(.+)$/);
     if (headingMatch) {
       flushSection();
       currentHeading = headingMatch[2].trim();
-      // Generate anchor from heading text
       currentAnchor = currentHeading
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, "")
@@ -78,5 +77,65 @@ export function splitIntoSections(markdown: string): Section[] {
   }
   flushSection();
 
-  return sections;
+  // Post-process: split oversized sections (>6KB) at h4 boundaries
+  const MAX_SECTION_SIZE = 6000;
+  const result: Section[] = [];
+  for (const section of sections) {
+    if (section.content.length <= MAX_SECTION_SIZE) {
+      result.push(section);
+      continue;
+    }
+    // Try splitting at #### headings
+    const subLines = section.content.split("\n");
+    let subHeading = section.heading;
+    let subAnchor = section.anchor;
+    let subContent: string[] = [];
+    let subOrder = section.order;
+    let didSplit = false;
+
+    for (const subLine of subLines) {
+      const h4Match = subLine.match(/^(####)\s+(.+)$/);
+      if (h4Match && subContent.join("\n").trim().length >= 200) {
+        const chunk = subContent.join("\n").trim();
+        if (chunk.length >= 50) {
+          result.push({
+            heading: subHeading,
+            anchor: subAnchor,
+            content: chunk,
+            order: subOrder++,
+          });
+          didSplit = true;
+        }
+        subHeading = `${section.heading} > ${h4Match[2].trim()}`;
+        subAnchor = h4Match[2].trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-");
+        subContent = [subLine];
+      } else {
+        subContent.push(subLine);
+      }
+    }
+    // Flush remaining
+    const remaining = subContent.join("\n").trim();
+    if (remaining.length >= 50) {
+      result.push({
+        heading: didSplit ? subHeading : section.heading,
+        anchor: didSplit ? subAnchor : section.anchor,
+        content: remaining,
+        order: subOrder,
+      });
+    }
+    if (!didSplit) {
+      // Couldn't split at h4 — keep the original large section
+      // (already pushed via the remaining flush above)
+    }
+  }
+
+  // Re-number order sequentially
+  for (let i = 0; i < result.length; i++) {
+    result[i].order = i;
+  }
+
+  return result;
 }
