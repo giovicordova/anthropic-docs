@@ -48,9 +48,9 @@ The server will automatically crawl and index all docs on first run. This takes 
 
 | Tool | What it does |
 |------|-------------|
-| `search_anthropic_docs` | Full-text search across all docs with BM25 ranking |
-| `get_doc_page` | Get the full markdown of a specific page by path |
-| `list_doc_sections` | Browse all indexed pages grouped by source |
+| `search_anthropic_docs` | Full-text search across all docs with BM25 ranking. Filter by source. |
+| `get_doc_page` | Get the full markdown of a specific page by path. Supports fuzzy matching. |
+| `list_doc_sections` | Browse all indexed pages grouped by source. Filter by source. |
 | `refresh_index` | Trigger a manual re-crawl if you need the latest |
 
 ## How it works
@@ -68,6 +68,7 @@ Claude Code <-> stdio <-> MCP Server <-> SQLite FTS5 Database
 - **Claude Code docs** come from `code.claude.com/docs/llms-full.txt`
 - Pages are split into sections at h2/h3 headings for precise search results
 - BM25 ranking weights title matches 10x and headings 5x over content
+- Crawls are atomic — the old index stays intact until a new crawl completes successfully
 - The index auto-refreshes daily on startup; call `refresh_index` anytime for an immediate update
 - Database lives at `~/.claude/mcp-data/anthropic-docs/docs.db`
 
