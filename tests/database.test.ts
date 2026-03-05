@@ -13,6 +13,8 @@ import {
   getMetadata,
   setMetadata,
   getIndexedBlogUrls,
+  getIndexedBlogUrlsWithTimestamps,
+  deleteBlogPages,
 } from "../src/database.js";
 import type { PageSection } from "../src/types.js";
 
@@ -179,6 +181,71 @@ describe("database", () => {
     expect(blogUrls).toHaveLength(2);
     expect(blogUrls).toContain("https://www.anthropic.com/news/post-a");
     expect(blogUrls).toContain("https://www.anthropic.com/research/post-b");
+  });
+
+  it("getIndexedBlogUrlsWithTimestamps returns Map with url to crawled_at", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/post-a",
+      url: "https://www.anthropic.com/news/post-a",
+      source: "blog",
+      content: "Content of blog post A with enough words to be meaningful in search.",
+    })], 1);
+    insertPageSections(db, stmts, [makeSection({
+      path: "/research/post-b",
+      url: "https://www.anthropic.com/research/post-b",
+      source: "blog",
+      content: "Content of blog post B with enough words to be meaningful in search.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const map = getIndexedBlogUrlsWithTimestamps(db);
+    expect(map).toBeInstanceOf(Map);
+    expect(map.size).toBe(2);
+    expect(map.has("https://www.anthropic.com/news/post-a")).toBe(true);
+    expect(map.has("https://www.anthropic.com/research/post-b")).toBe(true);
+    // crawled_at should be an ISO timestamp string
+    const ts = map.get("https://www.anthropic.com/news/post-a")!;
+    expect(ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("getIndexedBlogUrlsWithTimestamps returns empty Map when no blog pages", () => {
+    const map = getIndexedBlogUrlsWithTimestamps(db);
+    expect(map).toBeInstanceOf(Map);
+    expect(map.size).toBe(0);
+  });
+
+  it("deleteBlogPages removes rows and rebuilds FTS", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/post-a",
+      url: "https://www.anthropic.com/news/post-a",
+      source: "blog",
+      content: "Content of blog post A about artificial intelligence news.",
+    })], 1);
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/post-b",
+      url: "https://www.anthropic.com/news/post-b",
+      source: "blog",
+      content: "Content of blog post B about machine learning research.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const deleted = deleteBlogPages(db, ["https://www.anthropic.com/news/post-a"]);
+    expect(deleted).toBeGreaterThan(0);
+
+    // post-a should be gone
+    const blogUrls = getIndexedBlogUrls(db);
+    expect(blogUrls).not.toContain("https://www.anthropic.com/news/post-a");
+    expect(blogUrls).toContain("https://www.anthropic.com/news/post-b");
+
+    // FTS should still work after rebuild
+    const results = searchDocs(stmts, "machine learning");
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe("Test Page");
+  });
+
+  it("deleteBlogPages with empty array returns 0 and does not error", () => {
+    const deleted = deleteBlogPages(db, []);
+    expect(deleted).toBe(0);
   });
 
   it("stores and retrieves metadata", () => {

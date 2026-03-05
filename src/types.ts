@@ -84,6 +84,13 @@ export interface SectionRow {
   source: string;
 }
 
+// --- Sitemap entry ---
+
+export interface SitemapEntry {
+  url: string;
+  lastmod: string | null;
+}
+
 // --- Conditional fetch ---
 
 export interface ConditionalFetchResult {

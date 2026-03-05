@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSitemap, htmlToMarkdown, parseBlogPage } from "../src/blog-parser.js";
+import { parseSitemap, parseSitemapWithLastmod, htmlToMarkdown, parseBlogPage } from "../src/blog-parser.js";
 
 describe("parseSitemap", () => {
   it("extracts blog URLs matching BLOG_PATH_PREFIXES", () => {
@@ -39,6 +39,67 @@ describe("parseSitemap", () => {
   it("handles empty string", () => {
     const urls = parseSitemap("");
     expect(urls).toEqual([]);
+  });
+});
+
+describe("parseSitemapWithLastmod", () => {
+  it("extracts url and lastmod from well-formed sitemap XML", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.anthropic.com/news/claude-4</loc>
+    <lastmod>2026-01-15T10:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://www.anthropic.com/research/scaling-laws</loc>
+    <lastmod>2026-02-20T08:30:00Z</lastmod>
+  </url>
+</urlset>`;
+
+    const entries = parseSitemapWithLastmod(xml);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({ url: "https://www.anthropic.com/news/claude-4", lastmod: "2026-01-15T10:00:00Z" });
+    expect(entries[1]).toEqual({ url: "https://www.anthropic.com/research/scaling-laws", lastmod: "2026-02-20T08:30:00Z" });
+  });
+
+  it("returns null lastmod when lastmod tag is missing", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.anthropic.com/news/no-date</loc>
+  </url>
+</urlset>`;
+
+    const entries = parseSitemapWithLastmod(xml);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toEqual({ url: "https://www.anthropic.com/news/no-date", lastmod: null });
+  });
+
+  it("filters to blog path prefixes only", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.anthropic.com/news/post</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://www.anthropic.com/about</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://www.anthropic.com/careers/engineer</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+</urlset>`;
+
+    const entries = parseSitemapWithLastmod(xml);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].url).toBe("https://www.anthropic.com/news/post");
+  });
+
+  it("handles empty sitemap", () => {
+    const entries = parseSitemapWithLastmod("");
+    expect(entries).toEqual([]);
   });
 });
 
