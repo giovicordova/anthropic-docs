@@ -186,4 +186,49 @@ describe("database", () => {
     expect(getMetadata(stmts, "test_key")).toBe("test_value");
     expect(getMetadata(stmts, "missing")).toBeNull();
   });
+
+  it("blog rows survive cleanupOrphanedGenerations (blog-exclusion)", () => {
+    // Insert doc rows at generation 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/docs/en/old-doc",
+      url: "https://platform.claude.com/docs/en/old-doc",
+      title: "Old Doc",
+      source: "platform",
+      content: "Old documentation content from generation one that should be removed.",
+    })], 1);
+
+    // Insert blog rows at generation 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/blog-post",
+      url: "https://www.anthropic.com/news/blog-post",
+      title: "Blog Post",
+      source: "blog",
+      content: "Blog content that must survive orphan cleanup regardless of generation number.",
+    })], 1);
+
+    // Insert doc rows at generation 2 (simulating a new crawl)
+    insertPageSections(db, stmts, [makeSection({
+      path: "/docs/en/new-doc",
+      url: "https://platform.claude.com/docs/en/new-doc",
+      title: "New Doc",
+      source: "platform",
+      content: "New documentation content from generation two that should be kept alive.",
+    })], 2);
+    finalizeGeneration(db, stmts, 2);
+
+    // Now cleanup orphaned generations
+    const removed = cleanupOrphanedGenerations(db, stmts);
+
+    // Blog rows from gen 1 should survive (source='blog' excluded from cleanup)
+    const blogUrls = getIndexedBlogUrls(db);
+    expect(blogUrls).toContain("https://www.anthropic.com/news/blog-post");
+
+    // Doc rows from gen 1 should be gone (orphaned)
+    const oldDocResult = getDocPage(stmts, "/docs/en/old-doc");
+    expect(oldDocResult).toBeNull();
+
+    // Doc rows from gen 2 should survive (current generation)
+    const newDocResult = getDocPage(stmts, "/docs/en/new-doc");
+    expect(newDocResult).not.toBeNull();
+  });
 });
