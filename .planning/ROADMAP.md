@@ -16,6 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Trust Signals** - Surface freshness metadata, stale warnings, failure details, graceful shutdown (completed 2026-03-05)
 - [x] **Phase 3: Freshness** - Content change detection, frequent polling, blog update/deletion detection (completed 2026-03-05)
 - [ ] **Phase 4: Content Expansion** - Index model/product pages and research papers
+- [ ] **Phase 5: Tool Layer Integration** - Surface model/research sources in search and list tools (gap closure)
 
 ## Phase Details
 
@@ -79,6 +80,20 @@ Plans:
 - [ ] 04-01-PLAN.md -- Foundation: extend types, extract parseHtmlPage, fix hardcoded exclusions, update blog prefixes (CONT-01, CONT-02)
 - [ ] 04-02-PLAN.md -- Implement modelSource and researchSource, register in server, update status (CONT-01, CONT-02)
 
+### Phase 5: Tool Layer Integration
+**Goal**: All MCP tools fully support model and research content sources (search filtering, staleness tracking, page listing)
+**Depends on**: Phase 4
+**Requirements**: CONT-01, CONT-02, TRST-01, TRST-02
+**Gap Closure**: Closes INT-01, INT-02, INT-03 from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. Searching with `source: "model"` or `source: "research"` returns only pages from that source
+  2. Search metadata footer shows model and research crawl timestamps and warns when stale
+  3. `list_doc_sections` displays model and research pages in their own groups
+**Plans**: 1 plan
+
+Plans:
+- [ ] 05-01-PLAN.md -- Add model/research support to search and list-sections tools (CONT-01, CONT-02, TRST-01, TRST-02)
+
 ## Progress
 
 **Execution Order:**
@@ -89,4 +104,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 2/2 | Complete   | 2026-03-05 |
 | 3. Freshness | 2/2 | Complete   | 2026-03-05 |
-| 4. Content Expansion | 1/2 | In Progress|  |
+| 4. Content Expansion | 2/2 | Complete | 2026-03-05 |
+| 5. Tool Layer Integration | 0/1 | Pending | |
