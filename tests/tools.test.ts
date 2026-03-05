@@ -15,6 +15,7 @@ import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
 import { STALE_DAYS, BLOG_STALE_DAYS } from "../src/config.js";
 import { buildMetadataFooter } from "../src/tools/search.js";
+import { buildStatusText } from "../src/tools/status.js";
 
 /**
  * Tool response format tests.
@@ -438,5 +439,71 @@ describe("staleness metadata", () => {
     expect(footer).toContain("**Warning: stale data**");
     expect(footer).toContain("platform");
     expect(footer).toContain("blog");
+  });
+});
+
+describe("failure info", () => {
+  let db: Database.Database;
+  let stmts: Statements;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("index_status shows failure reason and timestamp", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+
+    const crawlState = {
+      getState: (name: string) => "idle" as const,
+      getLastError: (name: string) => {
+        if (name === "docs") return { message: "Connection timeout", timestamp: "2026-03-05T10:00:00Z" };
+        return null;
+      },
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).toContain("Last docs failure: Connection timeout at 2026-03-05T10:00:00Z");
+  });
+
+  it("index_status shows nothing extra when no failures", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+
+    const crawlState = {
+      getState: (_name: string) => "idle" as const,
+      getLastError: (_name: string) => null,
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).not.toContain("failure");
+  });
+
+  it("shows both docs and blog failure info independently", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+
+    const crawlState = {
+      getState: (_name: string) => "failed" as const,
+      getLastError: (name: string) => {
+        if (name === "docs") return { message: "Connection timeout", timestamp: "2026-03-05T10:00:00Z" };
+        if (name === "blog") return { message: "Sitemap unavailable", timestamp: "2026-03-05T11:00:00Z" };
+        return null;
+      },
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).toContain("Last docs failure: Connection timeout at 2026-03-05T10:00:00Z");
+    expect(status).toContain("Last blog failure: Sitemap unavailable at 2026-03-05T11:00:00Z");
   });
 });
