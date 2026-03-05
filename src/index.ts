@@ -39,7 +39,7 @@ async function startCrawl(): Promise<number> {
   }
 }
 
-function firstRunBuildingResponse(): { content: { type: "text"; text: string }[] } | null {
+function firstRunBuildingResponse(): { content: { type: "text"; text: string }[]; isError?: boolean } | null {
   if (!getMetadata(db, "last_crawl_timestamp") && crawlState === "crawling") {
     return {
       content: [
@@ -48,6 +48,7 @@ function firstRunBuildingResponse(): { content: { type: "text"; text: string }[]
           text: "Index is being built for the first time (~30-60s). Try again shortly.",
         },
       ],
+      isError: true,
     };
   }
   return null;
@@ -137,6 +138,7 @@ server.registerTool(
             text: `Search error: ${(err as Error).message}. Try simpler search terms.`,
           },
         ],
+        isError: true,
       };
     }
   }
