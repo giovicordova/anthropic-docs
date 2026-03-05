@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDocPage } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
+import { logger } from "../logger.js";
 
 export function registerGetPageTool(
   server: McpServer,
@@ -21,12 +22,17 @@ export function registerGetPageTool(
       },
     },
     async ({ path: docPath }) => {
+      const _toolStart = Date.now();
       const building = crawl.firstRunBuildingResponse();
-      if (building) return building;
+      if (building) {
+        logger.toolCall("get_doc_page", { path: docPath }, Date.now() - _toolStart, { success: true, resultSummary: "building" });
+        return building;
+      }
 
       const result = getDocPage(stmts, docPath);
 
       if (!result) {
+        logger.toolCall("get_doc_page", { path: docPath }, Date.now() - _toolStart, { success: true, resultSummary: "not found" });
         return {
           content: [
             {
@@ -41,6 +47,7 @@ export function registerGetPageTool(
         const list = result.matches
           .map((m) => `- **${m.title}** — \`${m.path}\``)
           .join("\n");
+        logger.toolCall("get_doc_page", { path: docPath }, Date.now() - _toolStart, { success: true, resultSummary: `disambiguation: ${result.matches.length} matches` });
         return {
           content: [
             {
@@ -51,6 +58,7 @@ export function registerGetPageTool(
         };
       }
 
+      logger.toolCall("get_doc_page", { path: docPath }, Date.now() - _toolStart, { success: true, resultSummary: `found: ${result.title}` });
       return {
         content: [
           {

@@ -16,6 +16,7 @@ import { pagesToSections, fetchAndParse } from "./parser.js";
 import type { FetchAndParseOptions } from "./parser.js";
 import { fetchSitemapEntries, fetchSitemapEntriesForPrefix, fetchBlogPages, parseHtmlPage } from "./blog-parser.js";
 import { fetchWithTimeout } from "./fetch.js";
+import { logger } from "./logger.js";
 import {
   STALE_DAYS,
   BLOG_STALE_DAYS,
@@ -277,6 +278,7 @@ export class CrawlManager {
     }
 
     this.states.set(source.name, "crawling");
+    logger.crawlStart(source.name);
     try {
       const pages = await source.fetch(this.db);
 
@@ -284,6 +286,7 @@ export class CrawlManager {
         // Zero pages + no error = conditional skip (304 or hash match)
         if (pages.length === 0) {
           console.error(`[server] ${source.name}: no changes detected (conditional skip).`);
+          logger.crawlEnd(source.name, { pages: 0, skipped: true });
           setMetadata(this.stmts, source.metaTimestampKey, new Date().toISOString());
           this.states.set(source.name, "idle");
           return 0;
@@ -297,6 +300,7 @@ export class CrawlManager {
         if (previousCount > 0 && pages.length < previousCount * MIN_PAGE_RATIO) {
           const msg = `Crawl rejected: ${pages.length}/${previousCount} pages (below ${MIN_PAGE_RATIO * 100}% safety threshold)`;
           console.error(`[server] ${source.name}: ${msg}`);
+          logger.crawlEnd(source.name, { pages: 0, error: msg });
           this.states.set(source.name, "failed");
           this.errors.set(source.name, { message: msg, timestamp: new Date().toISOString() });
           return 0;
@@ -315,6 +319,7 @@ export class CrawlManager {
         setMetadata(this.stmts, source.metaCountKey, String(pages.length));
 
         console.error(`[server] ${source.name} done. ${pages.length} pages, ${totalSections} sections indexed.`);
+        logger.crawlEnd(source.name, { pages: pages.length, sections: totalSections });
       } else {
         // Non-generation source (blog pattern): insert at current generation
         if (pages.length > 0) {
@@ -327,8 +332,10 @@ export class CrawlManager {
             totalSections += sections.length;
           }
           console.error(`[server] ${source.name} done. ${pages.length} new, ${totalSections} sections indexed.`);
+          logger.crawlEnd(source.name, { pages: pages.length, sections: totalSections });
         } else {
           console.error(`[server] ${source.name} index up to date.`);
+          logger.crawlEnd(source.name, { pages: 0, skipped: true });
         }
 
         // Always update timestamp (even when no new pages -- matches original behavior)
@@ -347,10 +354,12 @@ export class CrawlManager {
       this.errors.set(source.name, { message: (err as Error).message, timestamp: new Date().toISOString() });
       this.states.set(source.name, "failed");
       if (source.usesGeneration) {
+        logger.crawlEnd(source.name, { pages: 0, error: (err as Error).message });
         throw err;
       }
       // Blog crawl errors are caught and logged (matches original behavior)
       console.error(`[server] ${source.name} crawl failed: ${(err as Error).message}`);
+      logger.crawlEnd(source.name, { pages: 0, error: (err as Error).message });
       return 0;
     }
   }
@@ -367,6 +376,7 @@ export class CrawlManager {
 
       if (!lastCrawl) {
         console.error(`[server] No ${source.name} index found. Starting initial crawl...`);
+        logger.info("crawl", `No ${source.name} index found. Starting initial crawl...`);
         this.crawlAll().catch((err) =>
           console.error(`[server] Crawl failed: ${(err as Error).message}`)
         );
@@ -380,6 +390,7 @@ export class CrawlManager {
         console.error(
           `[server] ${source.name} index is ${Math.round(staleDays)} days old. Refreshing...`
         );
+        logger.info("crawl", `${source.name} index is ${Math.round(staleDays)} days old. Refreshing...`);
         this.crawlAll().catch((err) =>
           console.error(`[server] Crawl failed: ${(err as Error).message}`)
         );
@@ -389,6 +400,7 @@ export class CrawlManager {
       console.error(
         `[server] ${source.name} index is ${staleDays.toFixed(1)} days old. Fresh enough.`
       );
+      logger.info("crawl", `${source.name} index is ${staleDays.toFixed(1)} days old. Fresh enough.`);
     }
   }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { listSections } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
+import { logger } from "../logger.js";
 
 export function registerListSectionsTool(
   server: McpServer,
@@ -22,12 +23,17 @@ export function registerListSectionsTool(
       },
     },
     async ({ source }) => {
+      const _toolStart = Date.now();
       const building = crawl.firstRunBuildingResponse();
-      if (building) return building;
+      if (building) {
+        logger.toolCall("list_doc_sections", { source }, Date.now() - _toolStart, { success: true, resultSummary: "building" });
+        return building;
+      }
 
       const sections = listSections(stmts, source);
 
       if (sections.length === 0) {
+        logger.toolCall("list_doc_sections", { source }, Date.now() - _toolStart, { success: true, resultSummary: "no sections" });
         return {
           content: [
             {
@@ -108,6 +114,7 @@ export function registerListSectionsTool(
         output += "\n";
       }
 
+      logger.toolCall("list_doc_sections", { source }, Date.now() - _toolStart, { success: true, resultSummary: `${sections.length} sections` });
       return {
         content: [{ type: "text" as const, text: output }],
       };
