@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   initDatabase,
+  prepareStatements,
   searchDocs,
   getDocPage,
   listSections,
@@ -18,6 +19,7 @@ const server = new McpServer({
 });
 
 const db = initDatabase();
+const stmts = prepareStatements(db);
 
 // --- Crawl state management ---
 type CrawlState = "idle" | "crawling" | "failed";
@@ -30,7 +32,7 @@ async function startCrawl(): Promise<number> {
   }
   crawlState = "crawling";
   try {
-    const result = await crawlDocs(db);
+    const result = await crawlDocs(db, stmts);
     crawlState = "idle";
     return result;
   } catch (err) {
@@ -40,7 +42,7 @@ async function startCrawl(): Promise<number> {
 }
 
 function firstRunBuildingResponse(): { content: { type: "text"; text: string }[]; isError?: boolean } | null {
-  if (!getMetadata(db, "last_crawl_timestamp") && crawlState === "crawling") {
+  if (!getMetadata(stmts, "last_crawl_timestamp") && crawlState === "crawling") {
     return {
       content: [
         {
@@ -55,7 +57,7 @@ function firstRunBuildingResponse(): { content: { type: "text"; text: string }[]
 }
 
 function checkAndCrawl() {
-  const lastCrawl = getMetadata(db, "last_crawl_timestamp");
+  const lastCrawl = getMetadata(stmts, "last_crawl_timestamp");
 
   if (!lastCrawl) {
     console.error("[server] No index found. Starting initial crawl...");
@@ -107,7 +109,7 @@ server.registerTool(
     if (building) return building;
 
     try {
-      const results = searchDocs(db, query, limit, source);
+      const results = searchDocs(stmts, query, limit, source);
 
       if (results.length === 0) {
         return {
@@ -162,7 +164,7 @@ server.registerTool(
     const building = firstRunBuildingResponse();
     if (building) return building;
 
-    const result = getDocPage(db, docPath);
+    const result = getDocPage(stmts, docPath);
 
     if (!result) {
       return {
@@ -217,7 +219,7 @@ server.registerTool(
     const building = firstRunBuildingResponse();
     if (building) return building;
 
-    const sections = listSections(db, source);
+    const sections = listSections(stmts, source);
 
     if (sections.length === 0) {
       return {
@@ -296,8 +298,8 @@ server.registerTool(
       };
     }
 
-    const lastCrawl = getMetadata(db, "last_crawl_timestamp");
-    const pageCount = getMetadata(db, "page_count") || "unknown";
+    const lastCrawl = getMetadata(stmts, "last_crawl_timestamp");
+    const pageCount = getMetadata(stmts, "page_count") || "unknown";
 
     startCrawl().catch((err) =>
       console.error("[server] Refresh crawl failed:", err.message)

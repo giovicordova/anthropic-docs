@@ -98,19 +98,95 @@ export function initDatabase(): Database.Database {
   return db;
 }
 
-export function getCurrentGeneration(db: Database.Database): number {
-  const row = db
-    .prepare("SELECT value FROM metadata WHERE key = 'current_generation'")
-    .get() as { value: string } | undefined;
+export interface Statements {
+  insertPage: Database.Statement;
+  insertFts: Database.Statement;
+  deleteOldGen: Database.Statement;
+  rebuildFts: string; // exec, not prepare
+  setGeneration: Database.Statement;
+  search: Database.Statement;
+  searchWithSource: Database.Statement;
+  exactPath: Database.Statement;
+  suffixPath: Database.Statement;
+  segmentPath: Database.Statement;
+  listAll: Database.Statement;
+  listBySource: Database.Statement;
+  getMetadata: Database.Statement;
+  setMetadata: Database.Statement;
+  getCurrentGen: Database.Statement;
+}
+
+export function prepareStatements(db: Database.Database): Statements {
+  return {
+    insertPage: db.prepare(`
+      INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, source, generation, crawled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `),
+    insertFts: db.prepare(`
+      INSERT INTO pages_fts (rowid, title, section_heading, content)
+      VALUES (?, ?, ?, ?)
+    `),
+    deleteOldGen: db.prepare("DELETE FROM pages WHERE generation != ?"),
+    rebuildFts: "INSERT INTO pages_fts(pages_fts) VALUES('rebuild')",
+    setGeneration: db.prepare(
+      "INSERT OR REPLACE INTO metadata (key, value) VALUES ('current_generation', ?)"
+    ),
+    search: db.prepare(`
+      SELECT
+        p.title, p.url, p.section_heading, p.source,
+        snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
+        bm25(pages_fts, 10.0, 5.0, 1.0) as rank
+      FROM pages_fts
+      JOIN pages p ON p.id = pages_fts.rowid
+      WHERE pages_fts MATCH ?
+      ORDER BY rank
+      LIMIT ?
+    `),
+    searchWithSource: db.prepare(`
+      SELECT
+        p.title, p.url, p.section_heading, p.source,
+        snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
+        bm25(pages_fts, 10.0, 5.0, 1.0) as rank
+      FROM pages_fts
+      JOIN pages p ON p.id = pages_fts.rowid
+      WHERE pages_fts MATCH ?
+      AND p.source = ?
+      ORDER BY rank
+      LIMIT ?
+    `),
+    exactPath: db.prepare(
+      "SELECT title, url, path, content FROM pages WHERE path = ? ORDER BY section_order"
+    ),
+    suffixPath: db.prepare(
+      "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
+    ),
+    segmentPath: db.prepare(
+      "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
+    ),
+    listAll: db.prepare(
+      "SELECT DISTINCT path, title, source FROM pages ORDER BY source, path"
+    ),
+    listBySource: db.prepare(
+      "SELECT DISTINCT path, title, source FROM pages WHERE source = ? ORDER BY source, path"
+    ),
+    getMetadata: db.prepare("SELECT value FROM metadata WHERE key = ?"),
+    setMetadata: db.prepare(
+      "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+    ),
+    getCurrentGen: db.prepare(
+      "SELECT value FROM metadata WHERE key = 'current_generation'"
+    ),
+  };
+}
+
+export function getCurrentGeneration(stmts: Statements): number {
+  const row = stmts.getCurrentGen.get() as { value: string } | undefined;
   return row ? parseInt(row.value, 10) : 0;
 }
 
-export function insertPage(db: Database.Database, page: PageSection, generation: number): void {
+export function insertPage(db: Database.Database, stmts: Statements, page: PageSection, generation: number): void {
   const doInsert = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO pages (url, path, title, section_heading, section_anchor, content, section_order, source, generation, crawled_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    const result = stmts.insertPage.run(
       page.url,
       page.path,
       page.title,
@@ -123,10 +199,7 @@ export function insertPage(db: Database.Database, page: PageSection, generation:
       new Date().toISOString()
     );
 
-    db.prepare(`
-      INSERT INTO pages_fts (rowid, title, section_heading, content)
-      VALUES (?, ?, ?, ?)
-    `).run(
+    stmts.insertFts.run(
       result.lastInsertRowid,
       page.title,
       page.sectionHeading || "",
@@ -137,13 +210,11 @@ export function insertPage(db: Database.Database, page: PageSection, generation:
   doInsert();
 }
 
-export function finalizeGeneration(db: Database.Database, keepGeneration: number): void {
+export function finalizeGeneration(db: Database.Database, stmts: Statements, keepGeneration: number): void {
   const finalize = db.transaction(() => {
-    db.prepare("DELETE FROM pages WHERE generation != ?").run(keepGeneration);
-    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
-    db.prepare(
-      "INSERT OR REPLACE INTO metadata (key, value) VALUES ('current_generation', ?)"
-    ).run(String(keepGeneration));
+    stmts.deleteOldGen.run(keepGeneration);
+    db.exec(stmts.rebuildFts);
+    stmts.setGeneration.run(String(keepGeneration));
   });
   finalize();
 }
@@ -166,38 +237,20 @@ function preprocessQuery(query: string): string {
 }
 
 export function searchDocs(
-  db: Database.Database,
+  stmts: Statements,
   query: string,
   limit: number = 10,
   source?: string
 ): SearchResult[] {
   const ftsQuery = preprocessQuery(query);
 
-  const sourceFilter = source && source !== "all"
-    ? "AND p.source = ?"
-    : "";
+  const useSourceFilter = source && source !== "all";
 
-  const stmt = db.prepare(`
-    SELECT
-      p.title,
-      p.url,
-      p.section_heading,
-      p.source,
-      snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
-      bm25(pages_fts, 10.0, 5.0, 1.0) as rank
-    FROM pages_fts
-    JOIN pages p ON p.id = pages_fts.rowid
-    WHERE pages_fts MATCH ?
-    ${sourceFilter}
-    ORDER BY rank
-    LIMIT ?
-  `);
+  const rows = useSourceFilter
+    ? stmts.searchWithSource.all(ftsQuery, source, limit)
+    : stmts.search.all(ftsQuery, limit);
 
-  const params: any[] = [ftsQuery];
-  if (source && source !== "all") params.push(source);
-  params.push(limit);
-
-  return stmt.all(...params).map((row: any) => ({
+  return (rows as any[]).map((row: any) => ({
     title: row.title,
     url: row.url,
     sectionHeading: row.section_heading,
@@ -207,32 +260,20 @@ export function searchDocs(
 }
 
 export function getDocPage(
-  db: Database.Database,
+  stmts: Statements,
   searchPath: string
 ): GetDocPageResult | null {
   // 1. Exact match
-  let rows = db
-    .prepare(
-      "SELECT title, url, path, content FROM pages WHERE path = ? ORDER BY section_order"
-    )
-    .all(searchPath) as any[];
+  let rows = stmts.exactPath.all(searchPath) as any[];
 
   // 2. Suffix match (path ends with search term)
   if (rows.length === 0) {
-    rows = db
-      .prepare(
-        "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
-      )
-      .all(`%${searchPath}`) as any[];
+    rows = stmts.suffixPath.all(`%${searchPath}`) as any[];
   }
 
   // 3. Segment match (search term appears as a directory segment)
   if (rows.length === 0) {
-    rows = db
-      .prepare(
-        "SELECT title, url, path, content FROM pages WHERE path LIKE ? ORDER BY section_order"
-      )
-      .all(`%${searchPath}/%`) as any[];
+    rows = stmts.segmentPath.all(`%${searchPath}/%`) as any[];
   }
 
   if (rows.length === 0) return null;
@@ -259,39 +300,27 @@ export function getDocPage(
 }
 
 export function listSections(
-  db: Database.Database,
+  stmts: Statements,
   source?: string
 ): { path: string; title: string; source: string }[] {
   if (source && source !== "all") {
-    return db
-      .prepare(
-        "SELECT DISTINCT path, title, source FROM pages WHERE source = ? ORDER BY source, path"
-      )
-      .all(source) as { path: string; title: string; source: string }[];
+    return stmts.listBySource.all(source) as { path: string; title: string; source: string }[];
   }
-  return db
-    .prepare(
-      "SELECT DISTINCT path, title, source FROM pages ORDER BY source, path"
-    )
-    .all() as { path: string; title: string; source: string }[];
+  return stmts.listAll.all() as { path: string; title: string; source: string }[];
 }
 
 export function getMetadata(
-  db: Database.Database,
+  stmts: Statements,
   key: string
 ): string | null {
-  const row = db
-    .prepare("SELECT value FROM metadata WHERE key = ?")
-    .get(key) as { value: string } | undefined;
+  const row = stmts.getMetadata.get(key) as { value: string } | undefined;
   return row?.value ?? null;
 }
 
 export function setMetadata(
-  db: Database.Database,
+  stmts: Statements,
   key: string,
   value: string
 ): void {
-  db.prepare(
-    "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
-  ).run(key, value);
+  stmts.setMetadata.run(key, value);
 }

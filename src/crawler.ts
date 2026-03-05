@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { insertPage, getCurrentGeneration, finalizeGeneration, setMetadata } from "./database.js";
+import { type Statements, insertPage, getCurrentGeneration, finalizeGeneration, setMetadata } from "./database.js";
 import { htmlToMarkdown, splitIntoSections } from "./markdown.js";
 import { SITEMAP_URL, CLAUDE_CODE_DOCS_URL, CONCURRENCY, FETCH_TIMEOUT_MS } from "./config.js";
 
@@ -159,7 +159,7 @@ function parseLlmsFullTxt(text: string): ParsedPage[] {
   return pages;
 }
 
-async function crawlClaudeCodeDocs(db: Database.Database, generation: number): Promise<number> {
+async function crawlClaudeCodeDocs(db: Database.Database, stmts: Statements, generation: number): Promise<number> {
   console.error("[crawler] Fetching Claude Code docs from llms-full.txt...");
 
   const response = await fetchWithTimeout(CLAUDE_CODE_DOCS_URL, {
@@ -181,7 +181,7 @@ async function crawlClaudeCodeDocs(db: Database.Database, generation: number): P
     const sections = splitIntoSections(page.content);
 
     for (const section of sections) {
-      insertPage(db, {
+      insertPage(db, stmts, {
         url: page.url,
         path: page.path,
         title: page.title,
@@ -201,8 +201,8 @@ async function crawlClaudeCodeDocs(db: Database.Database, generation: number): P
   return indexed;
 }
 
-export async function crawlDocs(db: Database.Database): Promise<number> {
-  const currentGen = getCurrentGeneration(db);
+export async function crawlDocs(db: Database.Database, stmts: Statements): Promise<number> {
+  const currentGen = getCurrentGeneration(stmts);
   const newGen = currentGen + 1;
 
   const entries = await parseSitemap();
@@ -227,7 +227,7 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
     const source = extracted.isApiRef ? "api-reference" : "platform";
 
     for (const section of sections) {
-      insertPage(db, {
+      insertPage(db, stmts, {
         url: entry.url,
         path: entry.path,
         title,
@@ -243,14 +243,14 @@ export async function crawlDocs(db: Database.Database): Promise<number> {
     console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path} (${source})`);
   });
 
-  const codeIndexed = await crawlClaudeCodeDocs(db, newGen);
+  const codeIndexed = await crawlClaudeCodeDocs(db, stmts, newGen);
 
   // Atomically swap to new generation — delete old rows, rebuild FTS
-  finalizeGeneration(db, newGen);
+  finalizeGeneration(db, stmts, newGen);
 
   const totalIndexed = indexed + codeIndexed;
-  setMetadata(db, "last_crawl_timestamp", new Date().toISOString());
-  setMetadata(db, "page_count", String(totalIndexed));
+  setMetadata(stmts, "last_crawl_timestamp", new Date().toISOString());
+  setMetadata(stmts, "page_count", String(totalIndexed));
 
   console.error(`[crawler] Done. Indexed ${indexed} platform + ${codeIndexed} code = ${totalIndexed} total pages.`);
   return totalIndexed;
