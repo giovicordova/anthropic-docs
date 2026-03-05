@@ -33,3 +33,5 @@ export const MAX_RESEARCH_PAGES = 500;
 export const RESEARCH_PATH_PREFIX = "/research/";
 
 export const MIN_PAGE_RATIO = 0.5;
+
+export const LOG_DIR = path.join(process.cwd(), "docs", "logs");
