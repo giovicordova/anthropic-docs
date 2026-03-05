@@ -15,6 +15,7 @@ import {
   getIndexedBlogUrls,
   getIndexedBlogUrlsWithTimestamps,
   deleteBlogPages,
+  retagResearchPages,
 } from "../src/database.js";
 import type { PageSection } from "../src/types.js";
 
@@ -252,6 +253,118 @@ describe("database", () => {
     setMetadata(stmts, "test_key", "test_value");
     expect(getMetadata(stmts, "test_key")).toBe("test_value");
     expect(getMetadata(stmts, "missing")).toBeNull();
+  });
+
+  it("generation swap preserves model and research rows", () => {
+    // Insert model row at gen 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/claude/opus",
+      url: "https://www.anthropic.com/claude/opus",
+      title: "Claude Opus",
+      source: "model",
+      content: "Claude Opus is the most capable model for complex reasoning tasks.",
+    })], 1);
+    // Insert research row at gen 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/research/scaling-laws",
+      url: "https://www.anthropic.com/research/scaling-laws",
+      title: "Scaling Laws",
+      source: "research",
+      content: "Research paper on scaling laws for neural language models.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    // New generation 2 with doc content only
+    insertPageSections(db, stmts, [makeSection({
+      content: "New docs content from the second generation crawl cycle.",
+    })], 2);
+    finalizeGeneration(db, stmts, 2);
+
+    // Model and research rows should survive
+    const modelResults = searchDocs(stmts, "most capable model", 10, "model");
+    expect(modelResults).toHaveLength(1);
+    expect(modelResults[0].title).toBe("Claude Opus");
+
+    const researchResults = searchDocs(stmts, "scaling laws neural", 10, "research");
+    expect(researchResults).toHaveLength(1);
+    expect(researchResults[0].title).toBe("Scaling Laws");
+  });
+
+  it("cleanupOrphanedGenerations preserves model and research rows", () => {
+    // Insert doc rows at gen 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/docs/en/old-doc",
+      url: "https://platform.claude.com/docs/en/old-doc",
+      title: "Old Doc",
+      source: "platform",
+      content: "Old documentation content from generation one that should be removed.",
+    })], 1);
+    // Insert model row at gen 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/claude/opus",
+      url: "https://www.anthropic.com/claude/opus",
+      title: "Claude Opus",
+      source: "model",
+      content: "Model page content that must survive orphan cleanup regardless of gen.",
+    })], 1);
+    // Insert research row at gen 1
+    insertPageSections(db, stmts, [makeSection({
+      path: "/research/paper",
+      url: "https://www.anthropic.com/research/paper",
+      title: "Research Paper",
+      source: "research",
+      content: "Research content that must survive orphan cleanup regardless of gen.",
+    })], 1);
+    // New generation 2
+    insertPageSections(db, stmts, [makeSection({
+      path: "/docs/en/new-doc",
+      url: "https://platform.claude.com/docs/en/new-doc",
+      title: "New Doc",
+      source: "platform",
+      content: "New documentation content from generation two that should be kept alive.",
+    })], 2);
+    finalizeGeneration(db, stmts, 2);
+
+    cleanupOrphanedGenerations(db, stmts);
+
+    // Model and research rows from gen 1 should survive
+    const modelResult = getDocPage(stmts, "/claude/opus");
+    expect(modelResult).not.toBeNull();
+    const researchResult = getDocPage(stmts, "/research/paper");
+    expect(researchResult).not.toBeNull();
+
+    // Old doc from gen 1 should be gone
+    const oldDocResult = getDocPage(stmts, "/docs/en/old-doc");
+    expect(oldDocResult).toBeNull();
+  });
+
+  it("retagResearchPages converts blog /research/ rows to source research", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/research/scaling-laws",
+      url: "https://www.anthropic.com/research/scaling-laws",
+      title: "Scaling Laws",
+      source: "blog",
+      content: "A research paper that was incorrectly tagged as blog source.",
+    })], 1);
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/claude-4",
+      url: "https://www.anthropic.com/news/claude-4",
+      title: "Claude 4 Announcement",
+      source: "blog",
+      content: "A news blog post that should remain tagged as blog source.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const changed = retagResearchPages(db);
+    expect(changed).toBe(1);
+
+    // Research row should now be source='research'
+    const researchResults = searchDocs(stmts, "scaling laws", 10, "research");
+    expect(researchResults).toHaveLength(1);
+
+    // Blog news row should still be source='blog'
+    const blogResults = searchDocs(stmts, "claude announcement", 10, "blog");
+    expect(blogResults).toHaveLength(1);
   });
 
   it("blog rows survive cleanupOrphanedGenerations (blog-exclusion)", () => {

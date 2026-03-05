@@ -304,6 +304,40 @@ describe("error tracking", () => {
   });
 });
 
+describe("CrawlManager parameterized count query", () => {
+  let db: Database.Database;
+  let stmts: ReturnType<typeof prepareStatements>;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("non-generation source count query uses source name, not hardcoded blog", async () => {
+    // Create a non-generation source named "model"
+    const modelSource: ContentSource = {
+      name: "model",
+      staleDays: 0.33,
+      metaTimestampKey: "last_model_crawl_timestamp",
+      metaCountKey: "model_page_count",
+      usesGeneration: false,
+      async fetch() {
+        return [
+          makePage({ url: "https://www.anthropic.com/claude/opus", path: "/claude/opus", source: "model", title: "Claude Opus" }),
+        ];
+      },
+    };
+
+    const manager = new CrawlManager(db, stmts, [modelSource]);
+    await manager.crawlSource(modelSource);
+
+    // The count metadata should reflect the model source count, not blog count
+    const count = db.prepare("SELECT value FROM metadata WHERE key = 'model_page_count'").get() as { value: string } | undefined;
+    expect(count).toBeDefined();
+    expect(count!.value).toBe("1");
+  });
+});
+
 // --- Blog diff tests (mock HTTP, real DB) ---
 
 // We mock fetchSitemapEntries and fetchBlogPages to avoid real HTTP
