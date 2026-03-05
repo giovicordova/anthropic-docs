@@ -213,6 +213,7 @@ export function searchDocs(
       sectionHeading: row.section_heading,
       snippet: row.snippet,
       relevanceScore: Math.abs(row.rank),
+      source: row.source,
     }));
   } catch (err) {
     console.error(`[database] FTS5 query error for "${query}": ${(err as Error).message}`);

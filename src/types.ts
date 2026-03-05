@@ -53,6 +53,7 @@ export interface SearchResult {
   sectionHeading: string | null;
   snippet: string;
   relevanceScore: number;
+  source: string;
 }
 
 export type GetDocPageResult =
@@ -67,6 +68,7 @@ export interface SearchRow {
   section_heading: string | null;
   snippet: string;
   rank: number;
+  source: string;
 }
 
 export interface PageRow {

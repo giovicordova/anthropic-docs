@@ -16,3 +16,5 @@ export const BLOG_CONCURRENCY = 10;
 export const BLOG_STALE_DAYS = 7;
 export const BLOG_PATH_PREFIXES = ["/news/", "/research/", "/engineering/"];
 export const MAX_BLOG_PAGES = 1000;
+
+export const MIN_PAGE_RATIO = 0.5;
