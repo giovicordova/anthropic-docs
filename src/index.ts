@@ -14,9 +14,11 @@ import {
   listSections,
   getMetadata,
   setMetadata,
+  getIndexedBlogUrls,
 } from "./database.js";
 import { fetchAndParse, pagesToSections } from "./parser.js";
-import { STALE_DAYS } from "./config.js";
+import { fetchSitemapUrls, fetchBlogPages } from "./blog-parser.js";
+import { STALE_DAYS, BLOG_STALE_DAYS } from "./config.js";
 
 const server = new McpServer({
   name: "anthropic-docs",
@@ -68,6 +70,48 @@ async function startCrawl(): Promise<number> {
   }
 }
 
+async function startBlogCrawl(): Promise<number> {
+  try {
+    console.error("[server] Starting blog crawl...");
+    const sitemapUrls = await fetchSitemapUrls();
+    if (sitemapUrls.length === 0) {
+      console.error("[server] No blog URLs found in sitemap.");
+      return 0;
+    }
+
+    const indexedUrls = getIndexedBlogUrls(db);
+    const newUrls = sitemapUrls.filter((url) => !indexedUrls.includes(url));
+
+    if (newUrls.length === 0) {
+      console.error(`[server] Blog index up to date (${indexedUrls.length} posts).`);
+      setMetadata(stmts, "last_blog_crawl_timestamp", new Date().toISOString());
+      return 0;
+    }
+
+    console.error(`[server] Found ${newUrls.length} new blog posts (${indexedUrls.length} already indexed).`);
+    const pages = await fetchBlogPages(newUrls);
+
+    const currentGen = getCurrentGeneration(stmts);
+    let totalSections = 0;
+    for (const page of pages) {
+      const sections = pagesToSections(page);
+      insertPageSections(db, stmts, sections, currentGen);
+      totalSections += sections.length;
+    }
+
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+
+    setMetadata(stmts, "last_blog_crawl_timestamp", new Date().toISOString());
+    setMetadata(stmts, "blog_page_count", String(indexedUrls.length + pages.length));
+
+    console.error(`[server] Blog crawl done. ${pages.length} new posts, ${totalSections} sections indexed.`);
+    return pages.length;
+  } catch (err) {
+    console.error(`[server] Blog crawl failed: ${(err as Error).message}`);
+    return 0;
+  }
+}
+
 function firstRunBuildingResponse(): { content: { type: "text"; text: string }[]; isError?: boolean } | null {
   if (!getMetadata(stmts, "last_crawl_timestamp") && crawlState === "crawling") {
     return {
@@ -111,6 +155,26 @@ function checkAndCrawl() {
   }
 }
 
+function checkAndCrawlBlog() {
+  const lastBlogCrawl = getMetadata(stmts, "last_blog_crawl_timestamp");
+
+  if (!lastBlogCrawl) {
+    console.error("[server] No blog index found. Starting initial blog crawl...");
+    startBlogCrawl();
+    return;
+  }
+
+  const age = Date.now() - new Date(lastBlogCrawl).getTime();
+  const staleDays = age / (1000 * 60 * 60 * 24);
+
+  if (staleDays > BLOG_STALE_DAYS) {
+    console.error(`[server] Blog index is ${Math.round(staleDays)} days old. Refreshing...`);
+    startBlogCrawl();
+  } else {
+    console.error(`[server] Blog index is ${staleDays.toFixed(1)} days old. Fresh enough.`);
+  }
+}
+
 // --- Tool: search_anthropic_docs ---
 server.registerTool(
   "search_anthropic_docs",
@@ -120,9 +184,9 @@ server.registerTool(
     inputSchema: {
       query: z.string().describe("Search query string. Use specific terms for best results."),
       source: z
-        .enum(["all", "platform", "code", "api-reference"])
+        .enum(["all", "platform", "code", "api-reference", "blog"])
         .default("all")
-        .describe("Filter by source: 'platform', 'code', 'api-reference', or 'all' (default)."),
+        .describe("Filter by source: 'platform', 'code', 'api-reference', 'blog', or 'all' (default)."),
       limit: z
         .number()
         .min(1)
@@ -235,9 +299,9 @@ server.registerTool(
       "List all indexed documentation pages with their paths, grouped by source. Use this to discover what documentation is available or find the correct path for get_doc_page.",
     inputSchema: {
       source: z
-        .enum(["all", "platform", "code", "api-reference"])
+        .enum(["all", "platform", "code", "api-reference", "blog"])
         .default("all")
-        .describe("Filter by source: 'platform', 'code', 'api-reference', or 'all' (default)."),
+        .describe("Filter by source: 'platform', 'code', 'api-reference', 'blog', or 'all' (default)."),
     },
   },
   async ({ source }) => {
@@ -297,6 +361,16 @@ server.registerTool(
       output += "\n";
     }
 
+    const blogPages = sections.filter((s) => s.source === "blog");
+
+    if (blogPages.length > 0) {
+      output += `## Anthropic Blog (${blogPages.length} posts)\n\n`;
+      for (const p of blogPages) {
+        output += `- [${p.title}](${p.path})\n`;
+      }
+      output += "\n";
+    }
+
     return {
       content: [{ type: "text" as const, text: output }],
     };
@@ -329,6 +403,9 @@ server.registerTool(
     startCrawl().catch((err) =>
       console.error("[server] Refresh crawl failed:", err.message)
     );
+    startBlogCrawl().catch((err) =>
+      console.error("[server] Blog refresh failed:", err.message)
+    );
 
     return {
       content: [
@@ -352,6 +429,8 @@ server.registerTool(
   async () => {
     const lastCrawl = getMetadata(stmts, "last_crawl_timestamp");
     const pageCount = getMetadata(stmts, "page_count") || "0";
+    const blogPageCount = getMetadata(stmts, "blog_page_count") || "0";
+    const lastBlogCrawl = getMetadata(stmts, "last_blog_crawl_timestamp");
 
     let ageDays = "unknown";
     if (lastCrawl) {
@@ -366,6 +445,9 @@ server.registerTool(
       `- Age: ${ageDays} days`,
       `- Crawl state: ${crawlState}`,
       `- Stale threshold: ${STALE_DAYS} day(s)`,
+      `- Blog posts indexed: ${blogPageCount}`,
+      `- Last blog crawl: ${lastBlogCrawl || "never"}`,
+      `- Blog stale threshold: ${BLOG_STALE_DAYS} day(s)`,
     ].join("\n");
 
     return {
@@ -377,6 +459,7 @@ server.registerTool(
 // --- Start server ---
 async function main() {
   checkAndCrawl();
+  checkAndCrawlBlog();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[server] Anthropic Docs MCP server v2 running on stdio");
