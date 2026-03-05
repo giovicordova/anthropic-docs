@@ -210,6 +210,19 @@ export function insertPage(db: Database.Database, stmts: Statements, page: PageS
   doInsert();
 }
 
+export function insertPageSections(db: Database.Database, stmts: Statements, sections: PageSection[], generation: number): void {
+  const batch = db.transaction(() => {
+    for (const page of sections) {
+      const result = stmts.insertPage.run(
+        page.url, page.path, page.title, page.sectionHeading, page.sectionAnchor,
+        page.content, page.sectionOrder, page.source, generation, new Date().toISOString()
+      );
+      stmts.insertFts.run(result.lastInsertRowid, page.title, page.sectionHeading || "", page.content);
+    }
+  });
+  batch();
+}
+
 export function finalizeGeneration(db: Database.Database, stmts: Statements, keepGeneration: number): void {
   const finalize = db.transaction(() => {
     stmts.deleteOldGen.run(keepGeneration);

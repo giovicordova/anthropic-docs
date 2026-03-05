@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { type Statements, insertPage, getCurrentGeneration, finalizeGeneration, setMetadata } from "./database.js";
+import { type Statements, type PageSection, insertPageSections, getCurrentGeneration, finalizeGeneration, setMetadata } from "./database.js";
 import { htmlToMarkdown, splitIntoSections } from "./markdown.js";
 import { SITEMAP_URL, CLAUDE_CODE_DOCS_URL, CONCURRENCY, FETCH_TIMEOUT_MS } from "./config.js";
 
@@ -180,18 +180,18 @@ async function crawlClaudeCodeDocs(db: Database.Database, stmts: Statements, gen
   for (const page of pages) {
     const sections = splitIntoSections(page.content);
 
-    for (const section of sections) {
-      insertPage(db, stmts, {
-        url: page.url,
-        path: page.path,
-        title: page.title,
-        sectionHeading: section.heading,
-        sectionAnchor: section.anchor,
-        content: section.content,
-        sectionOrder: section.order,
-        source: "code",
-      }, generation);
-    }
+    const pageSections: PageSection[] = sections.map((section) => ({
+      url: page.url,
+      path: page.path,
+      title: page.title,
+      sectionHeading: section.heading,
+      sectionAnchor: section.anchor,
+      content: section.content,
+      sectionOrder: section.order,
+      source: "code" as const,
+    }));
+
+    insertPageSections(db, stmts, pageSections, generation);
 
     indexed++;
     console.error(`[crawler] [code] Indexed: ${page.path}`);
@@ -226,18 +226,18 @@ export async function crawlDocs(db: Database.Database, stmts: Statements): Promi
     const sections = splitIntoSections(markdown);
     const source = extracted.isApiRef ? "api-reference" : "platform";
 
-    for (const section of sections) {
-      insertPage(db, stmts, {
-        url: entry.url,
-        path: entry.path,
-        title,
-        sectionHeading: section.heading,
-        sectionAnchor: section.anchor,
-        content: section.content,
-        sectionOrder: section.order,
-        source,
-      }, newGen);
-    }
+    const pageSections: PageSection[] = sections.map((section) => ({
+      url: entry.url,
+      path: entry.path,
+      title,
+      sectionHeading: section.heading,
+      sectionAnchor: section.anchor,
+      content: section.content,
+      sectionOrder: section.order,
+      source,
+    }));
+
+    insertPageSections(db, stmts, pageSections, newGen);
 
     indexed++;
     console.error(`[crawler] [${indexed}/${total}] Indexed: ${entry.path} (${source})`);
