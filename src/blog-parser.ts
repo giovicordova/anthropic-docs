@@ -6,7 +6,7 @@ import {
   MAX_BLOG_PAGES,
 } from "./config.js";
 import { fetchWithTimeout } from "./fetch.js";
-import type { ParsedPage, SitemapEntry } from "./types.js";
+import type { ParsedPage, SitemapEntry, DocSource } from "./types.js";
 
 // --- Pure functions (exported for testing) ---
 
@@ -74,7 +74,7 @@ export function htmlToMarkdown(html: string): string {
   return nhm.translate(html).trim();
 }
 
-export function parseBlogPage(url: string, html: string): ParsedPage | null {
+export function parseHtmlPage(url: string, html: string, source: DocSource): ParsedPage | null {
   const content = htmlToMarkdown(html);
   if (!content) return null;
 
@@ -92,7 +92,11 @@ export function parseBlogPage(url: string, html: string): ParsedPage | null {
 
   const path = new URL(url).pathname;
 
-  return { title, url, path, content, source: "blog" };
+  return { title, url, path, content, source };
+}
+
+export function parseBlogPage(url: string, html: string): ParsedPage | null {
+  return parseHtmlPage(url, html, "blog");
 }
 
 // --- Fetch functions ---

@@ -17,7 +17,19 @@ export const BLOG_SITEMAP_URL = "https://www.anthropic.com/sitemap.xml";
 export const BLOG_CONCURRENCY = 10;
 export const BLOG_STALE_HOURS = 8;
 export const BLOG_STALE_DAYS = BLOG_STALE_HOURS / 24; // fractional days for staleness math
-export const BLOG_PATH_PREFIXES = ["/news/", "/research/", "/engineering/"];
+export const BLOG_PATH_PREFIXES = ["/news/", "/engineering/"];
 export const MAX_BLOG_PAGES = 1000;
+
+export const MODEL_PAGE_URLS = [
+  "https://www.anthropic.com/claude/opus",
+  "https://www.anthropic.com/claude/sonnet",
+  "https://www.anthropic.com/claude/haiku",
+];
+export const MODEL_STALE_HOURS = 8;
+export const MODEL_STALE_DAYS = MODEL_STALE_HOURS / 24;
+export const RESEARCH_STALE_HOURS = 8;
+export const RESEARCH_STALE_DAYS = RESEARCH_STALE_HOURS / 24;
+export const MAX_RESEARCH_PAGES = 500;
+export const RESEARCH_PATH_PREFIX = "/research/";
 
 export const MIN_PAGE_RATIO = 0.5;

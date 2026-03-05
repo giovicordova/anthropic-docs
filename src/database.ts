@@ -75,7 +75,7 @@ export function prepareStatements(db: Database.Database): Statements {
       INSERT INTO pages_fts (rowid, title, section_heading, content)
       VALUES (?, ?, ?, ?)
     `),
-    deleteOldGen: db.prepare("DELETE FROM pages WHERE generation != ? AND source != 'blog'"),
+    deleteOldGen: db.prepare("DELETE FROM pages WHERE generation != ? AND source NOT IN ('blog', 'model', 'research')"),
     rebuildFts: "INSERT INTO pages_fts(pages_fts) VALUES('rebuild')",
     setGeneration: db.prepare(
       "INSERT OR REPLACE INTO metadata (key, value) VALUES ('current_generation', ?)"
@@ -169,7 +169,7 @@ export function cleanupOrphanedGenerations(
   stmts: Statements
 ): number {
   const currentGen = getCurrentGeneration(stmts);
-  const result = db.prepare("DELETE FROM pages WHERE generation != ? AND source != 'blog'").run(currentGen);
+  const result = db.prepare("DELETE FROM pages WHERE generation != ? AND source NOT IN ('blog', 'model', 'research')").run(currentGen);
   if (result.changes > 0) {
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
   }
@@ -285,6 +285,24 @@ export function getIndexedBlogUrlsWithTimestamps(db: Database.Database): Map<str
     "SELECT DISTINCT url, MIN(crawled_at) as crawled_at FROM pages WHERE source = 'blog' GROUP BY url"
   ).all() as { url: string; crawled_at: string }[];
   return new Map(rows.map((r) => [r.url, r.crawled_at]));
+}
+
+export function retagResearchPages(db: Database.Database): number {
+  const result = db.prepare("UPDATE pages SET source = 'research' WHERE source = 'blog' AND path LIKE '/research/%'").run();
+  return result.changes;
+}
+
+export function deletePagesBySource(db: Database.Database, source: string, urls: string[]): number {
+  if (urls.length === 0) return 0;
+  let deleted = 0;
+  for (const url of urls) {
+    const result = db.prepare("DELETE FROM pages WHERE url = ? AND source = ?").run(url, source);
+    deleted += result.changes;
+  }
+  if (deleted > 0) {
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+  }
+  return deleted;
 }
 
 export function deleteBlogPages(db: Database.Database, urls: string[]): number {

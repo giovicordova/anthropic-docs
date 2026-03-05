@@ -15,7 +15,7 @@ export interface ContentSource {
 
 // --- Source tagging ---
 
-export type DocSource = "platform" | "code" | "api-reference" | "blog";
+export type DocSource = "platform" | "code" | "api-reference" | "blog" | "model" | "research";
 
 // --- Parser output ---
 

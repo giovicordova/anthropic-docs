@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parseSitemap, parseSitemapWithLastmod, htmlToMarkdown, parseBlogPage } from "../src/blog-parser.js";
+import { parseSitemap, parseSitemapWithLastmod, htmlToMarkdown, parseBlogPage, parseHtmlPage } from "../src/blog-parser.js";
 
 describe("parseSitemap", () => {
-  it("extracts blog URLs matching BLOG_PATH_PREFIXES", () => {
+  it("extracts blog URLs matching BLOG_PATH_PREFIXES (excludes /research/)", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://www.anthropic.com/news/claude-4</loc></url>
@@ -11,9 +11,9 @@ describe("parseSitemap", () => {
 </urlset>`;
 
     const urls = parseSitemap(xml);
-    expect(urls).toHaveLength(3);
+    expect(urls).toHaveLength(2);
     expect(urls).toContain("https://www.anthropic.com/news/claude-4");
-    expect(urls).toContain("https://www.anthropic.com/research/scaling-laws");
+    expect(urls).not.toContain("https://www.anthropic.com/research/scaling-laws");
     expect(urls).toContain("https://www.anthropic.com/engineering/mcp-launch");
   });
 
@@ -43,7 +43,7 @@ describe("parseSitemap", () => {
 });
 
 describe("parseSitemapWithLastmod", () => {
-  it("extracts url and lastmod from well-formed sitemap XML", () => {
+  it("extracts url and lastmod from well-formed sitemap XML (excludes /research/)", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -57,9 +57,8 @@ describe("parseSitemapWithLastmod", () => {
 </urlset>`;
 
     const entries = parseSitemapWithLastmod(xml);
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(1);
     expect(entries[0]).toEqual({ url: "https://www.anthropic.com/news/claude-4", lastmod: "2026-01-15T10:00:00Z" });
-    expect(entries[1]).toEqual({ url: "https://www.anthropic.com/research/scaling-laws", lastmod: "2026-02-20T08:30:00Z" });
   });
 
   it("returns null lastmod when lastmod tag is missing", () => {
@@ -198,5 +197,41 @@ describe("parseBlogPage", () => {
     const page = parseBlogPage(url, html);
 
     expect(page).toBeNull();
+  });
+});
+
+describe("parseHtmlPage", () => {
+  it("returns ParsedPage with correct source for model", () => {
+    const html = `<article><h1>Claude Opus</h1><p>The most capable model in the Claude family.</p></article>`;
+    const url = "https://www.anthropic.com/claude/opus";
+
+    const page = parseHtmlPage(url, html, "model");
+
+    expect(page).not.toBeNull();
+    expect(page!.title).toBe("Claude Opus");
+    expect(page!.url).toBe(url);
+    expect(page!.path).toBe("/claude/opus");
+    expect(page!.source).toBe("model");
+    expect(page!.content).toContain("most capable model");
+  });
+
+  it("returns null for empty HTML content", () => {
+    const html = `<article></article>`;
+    const url = "https://www.anthropic.com/claude/opus";
+
+    const page = parseHtmlPage(url, html, "model");
+
+    expect(page).toBeNull();
+  });
+
+  it("uses URL path segment as title when no h1", () => {
+    const html = `<article><p>No heading here, just paragraph content for the page.</p></article>`;
+    const url = "https://www.anthropic.com/research/some-paper";
+
+    const page = parseHtmlPage(url, html, "research");
+
+    expect(page).not.toBeNull();
+    expect(page!.title).toBe("some-paper");
+    expect(page!.source).toBe("research");
   });
 });

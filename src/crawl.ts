@@ -224,8 +224,8 @@ export class CrawlManager {
 
         // For non-generation sources, query total count from DB
         const countRow = this.db
-          .prepare("SELECT COUNT(DISTINCT url) as cnt FROM pages WHERE source = 'blog'")
-          .get() as { cnt: number };
+          .prepare("SELECT COUNT(DISTINCT url) as cnt FROM pages WHERE source = ?")
+          .get(source.name) as { cnt: number };
         setMetadata(this.stmts, source.metaCountKey, String(countRow.cnt));
       }
 
