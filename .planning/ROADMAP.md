@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Architecture and Safety** - Decompose index.ts monolith, unify crawl pipeline, add safety tests
 - [x] **Phase 2: Trust Signals** - Surface freshness metadata, stale warnings, failure details, graceful shutdown (completed 2026-03-05)
-- [ ] **Phase 3: Freshness** - Content change detection, frequent polling, blog update/deletion detection
+- [x] **Phase 3: Freshness** - Content change detection, frequent polling, blog update/deletion detection (completed 2026-03-05)
 - [ ] **Phase 4: Content Expansion** - Index model/product pages and research papers
 
 ## Phase Details
@@ -87,5 +87,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 2/2 | Complete   | 2026-03-05 |
-| 3. Freshness | 1/2 | In progress | - |
+| 3. Freshness | 2/2 | Complete   | 2026-03-05 |
 | 4. Content Expansion | 0/? | Not started | - |

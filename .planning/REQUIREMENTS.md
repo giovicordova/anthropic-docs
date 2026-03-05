@@ -30,7 +30,7 @@
 
 - [x] **FRSH-01**: Content change detection via ETag/Last-Modified/hash before re-parsing unchanged content
 - [x] **FRSH-02**: Background polling every 1-2 hours (configurable interval, timer with .unref())
-- [ ] **FRSH-03**: Blog update/deletion detection (full sitemap comparison, not just new URL detection)
+- [x] **FRSH-03**: Blog update/deletion detection (full sitemap comparison, not just new URL detection)
 
 ### Content
 
@@ -82,7 +82,7 @@
 | TEST-03 | Phase 1 | Complete |
 | FRSH-01 | Phase 3 | Complete |
 | FRSH-02 | Phase 3 | Complete |
-| FRSH-03 | Phase 3 | Pending |
+| FRSH-03 | Phase 3 | Complete |
 | CONT-01 | Phase 4 | Pending |
 | CONT-02 | Phase 4 | Pending |
 
