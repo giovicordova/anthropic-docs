@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { STALE_DAYS, BLOG_STALE_DAYS } from "../src/config.js";
-import { CrawlManager } from "../src/crawl.js";
-import { initDatabase, prepareStatements, setMetadata } from "../src/database.js";
-import type { ContentSource, ParsedPage } from "../src/types.js";
+import { CrawlManager, blogSource } from "../src/crawl.js";
+import { initDatabase, prepareStatements, setMetadata, insertPageSections, finalizeGeneration, getIndexedBlogUrls } from "../src/database.js";
+import type { ContentSource, ParsedPage, SitemapEntry } from "../src/types.js";
+import type { PageSection } from "../src/types.js";
 import type Database from "better-sqlite3";
 
 /**
@@ -300,5 +301,230 @@ describe("error tracking", () => {
     const error = manager.getLastError("blog");
     expect(error).not.toBeNull();
     expect(error!.message).toBe("Sitemap fetch failed");
+  });
+});
+
+// --- Blog diff tests (mock HTTP, real DB) ---
+
+// We mock fetchSitemapEntries and fetchBlogPages to avoid real HTTP
+vi.mock("../src/blog-parser.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/blog-parser.js")>();
+  return {
+    ...actual,
+    fetchSitemapEntries: vi.fn(async () => [] as SitemapEntry[]),
+    fetchBlogPages: vi.fn(async () => [] as ParsedPage[]),
+  };
+});
+
+import { fetchSitemapEntries, fetchBlogPages } from "../src/blog-parser.js";
+
+const mockFetchSitemapEntries = vi.mocked(fetchSitemapEntries);
+const mockFetchBlogPages = vi.mocked(fetchBlogPages);
+
+function makeBlogSection(overrides: Partial<PageSection> = {}): PageSection {
+  return {
+    url: "https://www.anthropic.com/news/test-post",
+    path: "/news/test-post",
+    title: "Test Blog Post",
+    sectionHeading: null,
+    sectionAnchor: null,
+    content: "Blog content about test topics with enough words to be meaningful.",
+    sectionOrder: 0,
+    source: "blog",
+    ...overrides,
+  };
+}
+
+describe("blogSource sitemap diff", () => {
+  let db: Database.Database;
+  let stmts: ReturnType<typeof prepareStatements>;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+    vi.clearAllMocks();
+  });
+
+  it("fetches all URLs when index is empty (all new)", async () => {
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/post-a", lastmod: "2026-01-01" },
+      { url: "https://www.anthropic.com/news/post-b", lastmod: "2026-01-02" },
+    ]);
+    mockFetchBlogPages.mockResolvedValue([
+      makePage({ url: "https://www.anthropic.com/news/post-a", path: "/news/post-a", source: "blog", title: "Post A" }),
+      makePage({ url: "https://www.anthropic.com/news/post-b", path: "/news/post-b", source: "blog", title: "Post B" }),
+    ]);
+
+    const pages = await blogSource.fetch(db);
+    expect(pages).toHaveLength(2);
+    expect(mockFetchBlogPages).toHaveBeenCalledOnce();
+    // All URLs should be passed to fetchBlogPages
+    const calledUrls = mockFetchBlogPages.mock.calls[0][0];
+    expect(calledUrls).toContain("https://www.anthropic.com/news/post-a");
+    expect(calledUrls).toContain("https://www.anthropic.com/news/post-b");
+  });
+
+  it("detects updated URLs (lastmod > crawled_at) and re-fetches them", async () => {
+    // Insert a blog post indexed 2 days ago
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/updated-post",
+      path: "/news/updated-post",
+      title: "Old Title",
+      content: "Old blog content that should be replaced after update.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    // Sitemap says this post was updated more recently than when we crawled it
+    const futureDate = new Date(Date.now() + 86400000).toISOString(); // tomorrow
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/updated-post", lastmod: futureDate },
+    ]);
+    mockFetchBlogPages.mockResolvedValue([
+      makePage({ url: "https://www.anthropic.com/news/updated-post", path: "/news/updated-post", source: "blog", title: "Updated Title" }),
+    ]);
+
+    const pages = await blogSource.fetch(db);
+
+    // Should return the updated page for re-insertion
+    expect(pages).toHaveLength(1);
+    expect(pages[0].title).toBe("Updated Title");
+
+    // Old rows should have been deleted before returning new pages
+    const remainingUrls = getIndexedBlogUrls(db);
+    expect(remainingUrls).not.toContain("https://www.anthropic.com/news/updated-post");
+  });
+
+  it("skips unchanged URLs (lastmod <= crawled_at)", async () => {
+    // Insert a blog post
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/old-post",
+      path: "/news/old-post",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    // Sitemap has same post with lastmod in the past
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/old-post", lastmod: "2020-01-01T00:00:00Z" },
+    ]);
+
+    const pages = await blogSource.fetch(db);
+
+    // No pages to fetch -- everything unchanged
+    expect(pages).toHaveLength(0);
+    expect(mockFetchBlogPages).not.toHaveBeenCalled();
+  });
+
+  it("skips URLs with null lastmod when already indexed", async () => {
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/null-mod",
+      path: "/news/null-mod",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/null-mod", lastmod: null },
+    ]);
+
+    const pages = await blogSource.fetch(db);
+    expect(pages).toHaveLength(0);
+    expect(mockFetchBlogPages).not.toHaveBeenCalled();
+  });
+
+  it("detects deleted URLs (in index, not in sitemap) and removes them", async () => {
+    // Insert two blog posts
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/keep-post",
+      path: "/news/keep-post",
+      content: "Blog content for post that should remain in the index.",
+    })], 1);
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/deleted-post",
+      path: "/news/deleted-post",
+      content: "Blog content for post that will be removed from sitemap.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    // Sitemap only contains keep-post (deleted-post is gone)
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/keep-post", lastmod: "2020-01-01T00:00:00Z" },
+    ]);
+
+    await blogSource.fetch(db);
+
+    const remainingUrls = getIndexedBlogUrls(db);
+    expect(remainingUrls).toContain("https://www.anthropic.com/news/keep-post");
+    expect(remainingUrls).not.toContain("https://www.anthropic.com/news/deleted-post");
+  });
+
+  it("skips deletions when sitemap entries below safety threshold", async () => {
+    // Insert 10 blog posts
+    for (let i = 0; i < 10; i++) {
+      insertPageSections(db, stmts, [makeBlogSection({
+        url: `https://www.anthropic.com/news/post-${i}`,
+        path: `/news/post-${i}`,
+        content: `Blog content for post number ${i} with enough words to index.`,
+      })], 1);
+    }
+    finalizeGeneration(db, stmts, 1);
+
+    // Sitemap returns only 2 entries (below 50% of 10)
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/post-0", lastmod: "2020-01-01T00:00:00Z" },
+      { url: "https://www.anthropic.com/news/post-1", lastmod: "2020-01-01T00:00:00Z" },
+    ]);
+
+    await blogSource.fetch(db);
+
+    // All 10 posts should still be in the index (deletions skipped)
+    const remainingUrls = getIndexedBlogUrls(db);
+    expect(remainingUrls).toHaveLength(10);
+  });
+
+  it("handles mixed scenario: new + updated + deleted + unchanged", async () => {
+    // Insert existing posts
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/unchanged",
+      path: "/news/unchanged",
+      content: "Unchanged blog post content that stays the same.",
+    })], 1);
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/to-update",
+      path: "/news/to-update",
+      content: "Old content of blog post that will be updated.",
+    })], 1);
+    insertPageSections(db, stmts, [makeBlogSection({
+      url: "https://www.anthropic.com/news/to-delete",
+      path: "/news/to-delete",
+      content: "Content of blog post that will be deleted from sitemap.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    mockFetchSitemapEntries.mockResolvedValue([
+      { url: "https://www.anthropic.com/news/unchanged", lastmod: "2020-01-01T00:00:00Z" },
+      { url: "https://www.anthropic.com/news/to-update", lastmod: futureDate },
+      { url: "https://www.anthropic.com/news/brand-new", lastmod: "2026-03-01" },
+      // to-delete is NOT in sitemap
+    ]);
+
+    mockFetchBlogPages.mockResolvedValue([
+      makePage({ url: "https://www.anthropic.com/news/to-update", path: "/news/to-update", source: "blog", title: "Updated" }),
+      makePage({ url: "https://www.anthropic.com/news/brand-new", path: "/news/brand-new", source: "blog", title: "Brand New" }),
+    ]);
+
+    const pages = await blogSource.fetch(db);
+
+    // Should return updated + new pages
+    expect(pages).toHaveLength(2);
+    const urls = pages.map(p => p.url);
+    expect(urls).toContain("https://www.anthropic.com/news/to-update");
+    expect(urls).toContain("https://www.anthropic.com/news/brand-new");
+
+    // Deleted post should be gone
+    const remainingUrls = getIndexedBlogUrls(db);
+    expect(remainingUrls).not.toContain("https://www.anthropic.com/news/to-delete");
+
+    // Unchanged post should still exist
+    expect(remainingUrls).toContain("https://www.anthropic.com/news/unchanged");
   });
 });
