@@ -1,5 +1,5 @@
 import { MAX_SECTION_SIZE, MIN_SECTION_SIZE } from "./config.js";
-import type { Section } from "./types.js";
+import type { Section, ParsedPage, DocSource } from "./types.js";
 
 export function splitIntoSections(markdown: string): Section[] {
   const lines = markdown.split("\n");
@@ -93,4 +93,75 @@ export function splitIntoSections(markdown: string): Section[] {
   }
 
   return result;
+}
+
+export function parsePages(text: string, defaultSource: "platform" | "code"): ParsedPage[] {
+  const pages: ParsedPage[] = [];
+  const lines = text.split("\n");
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i].startsWith("# ")) {
+      let urlLine: string | null = null;
+      let urlLineIndex = -1;
+
+      // Look ahead for URL: or Source: within the next 3 lines
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        if (lines[j].startsWith("URL: ") || lines[j].startsWith("Source: ")) {
+          urlLine = lines[j];
+          urlLineIndex = j;
+          break;
+        }
+      }
+
+      if (!urlLine) {
+        i++;
+        continue;
+      }
+
+      const title = lines[i].slice(2).trim();
+      const url = urlLine.replace(/^(URL|Source): /, "").trim();
+      let urlPath: string;
+      try {
+        urlPath = new URL(url).pathname;
+      } catch {
+        i++;
+        continue;
+      }
+
+      // Collect content until the next page delimiter
+      const contentLines: string[] = [];
+      i = urlLineIndex + 1;
+
+      while (i < lines.length) {
+        if (lines[i].startsWith("# ")) {
+          let isNewPage = false;
+          for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+            if (lines[j].startsWith("URL: ") || lines[j].startsWith("Source: ")) {
+              isNewPage = true;
+              break;
+            }
+          }
+          if (isNewPage) break;
+        }
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      const content = contentLines.join("\n").trim();
+      if (content.length === 0) continue;
+
+      // Determine source
+      let source: DocSource = defaultSource;
+      if (defaultSource === "platform" && urlPath.match(/^\/docs\/en\/api\//)) {
+        source = "api-reference";
+      }
+
+      pages.push({ title, url, path: urlPath, content, source });
+    } else {
+      i++;
+    }
+  }
+
+  return pages;
 }
