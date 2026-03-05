@@ -34,8 +34,8 @@
 
 ### Content
 
-- [ ] **CONT-01**: Index model/product pages (/claude/opus, /claude/sonnet, /claude/haiku) as a new ContentSource
-- [ ] **CONT-02**: Index research papers from /research/ section of anthropic.com
+- [x] **CONT-01**: Index model/product pages (/claude/opus, /claude/sonnet, /claude/haiku) as a new ContentSource
+- [x] **CONT-02**: Index research papers from /research/ section of anthropic.com
 
 ## v2 Requirements
 
@@ -83,8 +83,8 @@
 | FRSH-01 | Phase 3 | Complete |
 | FRSH-02 | Phase 3 | Complete |
 | FRSH-03 | Phase 3 | Complete |
-| CONT-01 | Phase 4 | Pending |
-| CONT-02 | Phase 4 | Pending |
+| CONT-01 | Phase 4 | Complete |
+| CONT-02 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
