@@ -14,8 +14,8 @@
 
 ### Trust
 
-- [ ] **TRST-01**: Search results include last crawl timestamp per source
-- [ ] **TRST-02**: Search results warn when index data exceeds staleness threshold
+- [x] **TRST-01**: Search results include last crawl timestamp per source
+- [x] **TRST-02**: Search results warn when index data exceeds staleness threshold
 - [x] **TRST-03**: index_status tool shows crawl failure reason and timestamp
 - [x] **TRST-04**: Graceful shutdown on SIGTERM/SIGINT (clean timer teardown, DB close)
 - [x] **TRST-05**: Minimum page count threshold before accepting a crawl result (prevents partial failure from wiping index)
@@ -72,8 +72,8 @@
 | ARCH-02 | Phase 1 | Complete |
 | ARCH-03 | Phase 1 | Complete |
 | ARCH-04 | Phase 1 | Complete |
-| TRST-01 | Phase 2 | Pending |
-| TRST-02 | Phase 2 | Pending |
+| TRST-01 | Phase 2 | Complete |
+| TRST-02 | Phase 2 | Complete |
 | TRST-03 | Phase 2 | Complete |
 | TRST-04 | Phase 2 | Complete |
 | TRST-05 | Phase 2 | Complete |

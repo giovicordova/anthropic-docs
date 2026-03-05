@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-05T15:50:09Z"
-last_activity: 2026-03-05 -- Completed 02-01 trust infrastructure
+status: completed
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-05T15:58:32.592Z"
+last_activity: 2026-03-05 -- Completed 02-02 trust metadata in tool responses
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Claude Code always has access to current, accurate Anthropic facts
-**Current focus:** Phase 2 - Trust Signals
+**Current focus:** Phase 2 - Trust Signals (complete)
 
 ## Current Position
 
-Phase: 2 of 4 (Trust Signals)
-Plan: 1 of 2 in current phase (complete)
-Status: In Progress
-Last activity: 2026-03-05 -- Completed 02-01 trust infrastructure
+Phase: 2 of 4 (Trust Signals) -- complete
+Plan: 2 of 2 in current phase (complete)
+Status: Phase 2 Complete
+Last activity: 2026-03-05 -- Completed 02-02 trust metadata in tool responses
 
-Progress: [████████░░] 75% (3/4 plans)
+Progress: [██████████] 100% (4/4 plans)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [████████░░] 75% (3/4 plans)
 | Phase 01 P01 | 4min | 2 tasks | 4 files |
 | Phase 01 P02 | 4min | 2 tasks | 9 files |
 | Phase 02 P01 | 3min | 2 tasks | 7 files |
+| Phase 02 P02 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Threshold check inside usesGeneration branch -- blog source automatically excluded
 - [Phase 02]: Error tracking uses Map not new type -- keeps types.ts minimal
 - [Phase 02]: Shutdown handler after main() call -- ensures server and db exist
+- [Phase 02]: Extracted buildMetadataFooter as exported pure function for testability
+- [Phase 02]: Extracted buildStatusText with StatusCrawlInfo interface for duck-typed testing
+- [Phase 02]: Non-blog sources grouped under shared doc timestamp in footer
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T15:50:09Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-05T15:58:32.590Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
