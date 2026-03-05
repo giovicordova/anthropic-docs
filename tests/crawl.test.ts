@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { STALE_DAYS, BLOG_STALE_DAYS } from "../src/config.js";
-import { CrawlManager, blogSource } from "../src/crawl.js";
+import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS, MODEL_PAGE_URLS, MAX_RESEARCH_PAGES } from "../src/config.js";
+import { CrawlManager, docSource, blogSource, modelSource, researchSource } from "../src/crawl.js";
 import { initDatabase, prepareStatements, setMetadata, insertPageSections, finalizeGeneration, getIndexedBlogUrls } from "../src/database.js";
 import type { ContentSource, ParsedPage, SitemapEntry } from "../src/types.js";
 import type { PageSection } from "../src/types.js";
@@ -340,20 +340,32 @@ describe("CrawlManager parameterized count query", () => {
 
 // --- Blog diff tests (mock HTTP, real DB) ---
 
-// We mock fetchSitemapEntries and fetchBlogPages to avoid real HTTP
+// We mock fetchSitemapEntries, fetchBlogPages, fetchSitemapEntriesForPrefix, and fetchWithTimeout to avoid real HTTP
 vi.mock("../src/blog-parser.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/blog-parser.js")>();
   return {
     ...actual,
     fetchSitemapEntries: vi.fn(async () => [] as SitemapEntry[]),
     fetchBlogPages: vi.fn(async () => [] as ParsedPage[]),
+    fetchSitemapEntriesForPrefix: vi.fn(async () => [] as SitemapEntry[]),
   };
 });
 
-import { fetchSitemapEntries, fetchBlogPages } from "../src/blog-parser.js";
+vi.mock("../src/fetch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/fetch.js")>();
+  return {
+    ...actual,
+    fetchWithTimeout: vi.fn(async () => new Response("", { status: 404 })),
+  };
+});
+
+import { fetchSitemapEntries, fetchBlogPages, fetchSitemapEntriesForPrefix } from "../src/blog-parser.js";
+import { fetchWithTimeout } from "../src/fetch.js";
 
 const mockFetchSitemapEntries = vi.mocked(fetchSitemapEntries);
 const mockFetchBlogPages = vi.mocked(fetchBlogPages);
+const mockFetchSitemapEntriesForPrefix = vi.mocked(fetchSitemapEntriesForPrefix);
+const mockFetchWithTimeout = vi.mocked(fetchWithTimeout);
 
 function makeBlogSection(overrides: Partial<PageSection> = {}): PageSection {
   return {
@@ -560,5 +572,118 @@ describe("blogSource sitemap diff", () => {
 
     // Unchanged post should still exist
     expect(remainingUrls).toContain("https://www.anthropic.com/news/unchanged");
+  });
+});
+
+// --- modelSource tests ---
+
+describe("modelSource", () => {
+  it("has correct metadata keys and usesGeneration=false", () => {
+    expect(modelSource.name).toBe("model");
+    expect(modelSource.staleDays).toBe(MODEL_STALE_DAYS);
+    expect(modelSource.metaTimestampKey).toBe("last_model_crawl_timestamp");
+    expect(modelSource.metaCountKey).toBe("model_page_count");
+    expect(modelSource.usesGeneration).toBe(false);
+  });
+
+  it("fetch returns ParsedPage[] with source=model for mocked HTML", async () => {
+    const db = initDatabase(":memory:");
+
+    // Mock fetchWithTimeout to return valid HTML for each model URL
+    mockFetchWithTimeout.mockImplementation(async (url: string) => {
+      return new Response(
+        `<article><h1>Claude Model</h1><p>Model description for ${url}.</p></article>`,
+        { status: 200 }
+      );
+    });
+
+    const pages = await modelSource.fetch(db);
+
+    expect(pages.length).toBe(MODEL_PAGE_URLS.length);
+    for (const page of pages) {
+      expect(page.source).toBe("model");
+      expect(page.title).toBe("Claude Model");
+    }
+  });
+
+  it("fetch skips URLs that return non-OK status", async () => {
+    const db = initDatabase(":memory:");
+
+    let callCount = 0;
+    mockFetchWithTimeout.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) return new Response("", { status: 404 });
+      return new Response(
+        `<article><h1>Model Page</h1><p>Content here for this model page.</p></article>`,
+        { status: 200 }
+      );
+    });
+
+    const pages = await modelSource.fetch(db);
+
+    // First URL fails, rest succeed
+    expect(pages.length).toBe(MODEL_PAGE_URLS.length - 1);
+  });
+});
+
+// --- researchSource tests ---
+
+describe("researchSource", () => {
+  it("has correct metadata keys and usesGeneration=false", () => {
+    expect(researchSource.name).toBe("research");
+    expect(researchSource.staleDays).toBe(RESEARCH_STALE_DAYS);
+    expect(researchSource.metaTimestampKey).toBe("last_research_crawl_timestamp");
+    expect(researchSource.metaCountKey).toBe("research_page_count");
+    expect(researchSource.usesGeneration).toBe(false);
+  });
+
+  it("fetch does incremental diff: new research pages fetched", async () => {
+    const db = initDatabase(":memory:");
+    const stmts = prepareStatements(db);
+
+    mockFetchSitemapEntriesForPrefix.mockResolvedValue([
+      { url: "https://www.anthropic.com/research/paper-a", lastmod: "2026-01-01" },
+      { url: "https://www.anthropic.com/research/paper-b", lastmod: "2026-01-02" },
+    ]);
+    mockFetchBlogPages.mockResolvedValue([
+      makePage({ url: "https://www.anthropic.com/research/paper-a", path: "/research/paper-a", source: "research", title: "Paper A" }),
+      makePage({ url: "https://www.anthropic.com/research/paper-b", path: "/research/paper-b", source: "research", title: "Paper B" }),
+    ]);
+
+    const pages = await researchSource.fetch(db);
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0].source).toBe("research");
+    expect(mockFetchBlogPages).toHaveBeenCalledOnce();
+  });
+
+  it("fetch respects MAX_RESEARCH_PAGES cap", async () => {
+    const db = initDatabase(":memory:");
+
+    // Create entries exceeding cap
+    const entries = Array.from({ length: MAX_RESEARCH_PAGES + 50 }, (_, i) => ({
+      url: `https://www.anthropic.com/research/paper-${i}`,
+      lastmod: "2026-01-01",
+    }));
+    mockFetchSitemapEntriesForPrefix.mockResolvedValue(entries);
+    mockFetchBlogPages.mockResolvedValue([]);
+
+    await researchSource.fetch(db);
+
+    // fetchBlogPages should receive at most MAX_RESEARCH_PAGES URLs
+    const calledUrls = mockFetchBlogPages.mock.calls[0][0];
+    expect(calledUrls.length).toBeLessThanOrEqual(MAX_RESEARCH_PAGES);
+  });
+
+  it("CrawlManager with 4 sources initializes all states to idle", () => {
+    const db = initDatabase(":memory:");
+    const stmts = prepareStatements(db);
+
+    const manager = new CrawlManager(db, stmts, [docSource, blogSource, modelSource, researchSource]);
+
+    expect(manager.getState("docs")).toBe("idle");
+    expect(manager.getState("blog")).toBe("idle");
+    expect(manager.getState("model")).toBe("idle");
+    expect(manager.getState("research")).toBe("idle");
   });
 });
