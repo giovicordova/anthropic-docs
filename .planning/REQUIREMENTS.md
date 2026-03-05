@@ -68,29 +68,29 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | Phase ? | Pending |
-| ARCH-02 | Phase ? | Pending |
-| ARCH-03 | Phase ? | Pending |
-| ARCH-04 | Phase ? | Pending |
-| TRST-01 | Phase ? | Pending |
-| TRST-02 | Phase ? | Pending |
-| TRST-03 | Phase ? | Pending |
-| TRST-04 | Phase ? | Pending |
-| TRST-05 | Phase ? | Pending |
-| TEST-01 | Phase ? | Pending |
-| TEST-02 | Phase ? | Pending |
-| TEST-03 | Phase ? | Pending |
-| FRSH-01 | Phase ? | Pending |
-| FRSH-02 | Phase ? | Pending |
-| FRSH-03 | Phase ? | Pending |
-| CONT-01 | Phase ? | Pending |
-| CONT-02 | Phase ? | Pending |
+| ARCH-01 | Phase 1 | Pending |
+| ARCH-02 | Phase 1 | Pending |
+| ARCH-03 | Phase 1 | Pending |
+| ARCH-04 | Phase 1 | Pending |
+| TRST-01 | Phase 2 | Pending |
+| TRST-02 | Phase 2 | Pending |
+| TRST-03 | Phase 2 | Pending |
+| TRST-04 | Phase 2 | Pending |
+| TRST-05 | Phase 2 | Pending |
+| TEST-01 | Phase 1 | Pending |
+| TEST-02 | Phase 1 | Pending |
+| TEST-03 | Phase 1 | Pending |
+| FRSH-01 | Phase 3 | Pending |
+| FRSH-02 | Phase 3 | Pending |
+| FRSH-03 | Phase 3 | Pending |
+| CONT-01 | Phase 4 | Pending |
+| CONT-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation*
