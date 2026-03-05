@@ -1,5 +1,18 @@
 import type Database from "better-sqlite3";
 
+// --- Crawl orchestration ---
+
+export type CrawlState = "idle" | "crawling" | "failed";
+
+export interface ContentSource {
+  name: string;
+  staleDays: number;
+  metaTimestampKey: string;
+  metaCountKey: string;
+  usesGeneration: boolean;
+  fetch(db: Database.Database): Promise<ParsedPage[]>;
+}
+
 // --- Source tagging ---
 
 export type DocSource = "platform" | "code" | "api-reference" | "blog";
