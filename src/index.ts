@@ -322,6 +322,39 @@ server.registerTool(
   }
 );
 
+// --- Tool: index_status ---
+server.registerTool(
+  "index_status",
+  {
+    description:
+      "Check the current status of the documentation index: page count, last crawl time, index age, and whether a crawl is in progress. Use this before refresh_index to decide if a refresh is needed. Lightweight — does not trigger a crawl.",
+    inputSchema: {},
+  },
+  async () => {
+    const lastCrawl = getMetadata(stmts, "last_crawl_timestamp");
+    const pageCount = getMetadata(stmts, "page_count") || "0";
+
+    let ageDays = "unknown";
+    if (lastCrawl) {
+      const age = Date.now() - new Date(lastCrawl).getTime();
+      ageDays = (age / (1000 * 60 * 60 * 24)).toFixed(1);
+    }
+
+    const status = [
+      `**Index Status**`,
+      `- Pages indexed: ${pageCount}`,
+      `- Last crawl: ${lastCrawl || "never"}`,
+      `- Age: ${ageDays} days`,
+      `- Crawl state: ${crawlState}`,
+      `- Stale threshold: ${STALE_DAYS} day(s)`,
+    ].join("\n");
+
+    return {
+      content: [{ type: "text" as const, text: status }],
+    };
+  }
+);
+
 // --- Start server ---
 async function main() {
   checkAndCrawl();
