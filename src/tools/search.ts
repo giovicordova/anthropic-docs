@@ -1,8 +1,45 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { searchDocs } from "../database.js";
+import { searchDocs, getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
+import { STALE_DAYS, BLOG_STALE_DAYS } from "../config.js";
+
+const ALL_SOURCES = ["platform", "code", "api-reference", "blog"];
+
+export function buildMetadataFooter(stmts: Statements, sources: string[]): string {
+  const docSources = sources.filter((s) => s !== "blog");
+  const hasBlog = sources.includes("blog");
+
+  const parts: string[] = [];
+  const staleNames: string[] = [];
+
+  if (docSources.length > 0) {
+    const ts = getMetadata(stmts, "last_crawl_timestamp");
+    const ageDays = ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : null;
+    parts.push(`${docSources.join(", ")}: last crawled ${ts || "never"}`);
+    if (ageDays !== null && ageDays > STALE_DAYS) staleNames.push(...docSources);
+  }
+
+  if (hasBlog) {
+    const ts = getMetadata(stmts, "last_blog_crawl_timestamp");
+    const ageDays = ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : null;
+    parts.push(`blog: last crawled ${ts || "never"}`);
+    if (ageDays !== null && ageDays > BLOG_STALE_DAYS) staleNames.push("blog");
+  }
+
+  let footer = "\n\n---\n" + parts.join(" | ");
+
+  if (staleNames.length > 0) {
+    footer =
+      "\n\n**Warning: stale data** -- " +
+      staleNames.join(", ") +
+      " index exceeds freshness threshold. Run refresh_index to update." +
+      footer;
+  }
+
+  return footer;
+}
 
 export function registerSearchTool(
   server: McpServer,
@@ -35,12 +72,21 @@ export function registerSearchTool(
       try {
         const results = searchDocs(stmts, query, limit, source);
 
+        // Determine sources for metadata footer
+        const footerSources =
+          results.length > 0
+            ? [...new Set(results.map((r) => r.source))]
+            : source !== "all"
+              ? [source]
+              : ALL_SOURCES;
+        const footer = buildMetadataFooter(stmts, footerSources);
+
         if (results.length === 0) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `No results found for "${query}"${source !== "all" ? ` in ${source} docs` : ""}. Try different terms, or use refresh_index to re-crawl if the index is stale.`,
+                text: `No results found for "${query}"${source !== "all" ? ` in ${source} docs` : ""}. Try different terms, or use refresh_index to re-crawl if the index is stale.${footer}`,
               },
             ],
           };
@@ -54,7 +100,7 @@ export function registerSearchTool(
           .join("\n\n");
 
         return {
-          content: [{ type: "text" as const, text: formatted }],
+          content: [{ type: "text" as const, text: formatted + footer }],
         };
       } catch (err) {
         return {
