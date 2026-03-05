@@ -12,7 +12,7 @@ Evolve the working MCP server from a functional monolith into a maintainable, tr
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Architecture and Safety** - Decompose index.ts monolith, unify crawl pipeline, add safety tests
+- [x] **Phase 1: Architecture and Safety** - Decompose index.ts monolith, unify crawl pipeline, add safety tests
 - [ ] **Phase 2: Trust Signals** - Surface freshness metadata, stale warnings, failure details, graceful shutdown
 - [ ] **Phase 3: Freshness** - Content change detection, frequent polling, blog update/deletion detection
 - [ ] **Phase 4: Content Expansion** - Index model/product pages and research papers
@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Write safety tests before refactor (TEST-01, TEST-02, TEST-03)
-- [ ] 01-02-PLAN.md -- Decompose index.ts into modules (ARCH-01, ARCH-02, ARCH-03, ARCH-04)
+- [x] 01-01-PLAN.md -- Write safety tests before refactor (TEST-01, TEST-02, TEST-03)
+- [x] 01-02-PLAN.md -- Decompose index.ts into modules (ARCH-01, ARCH-02, ARCH-03, ARCH-04)
 
 ### Phase 2: Trust Signals
 **Goal**: Users can see how fresh the index is, get warned about stale data, and the server handles failures and shutdowns gracefully
@@ -84,7 +84,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Architecture and Safety | 0/2 | Planning complete | - |
+| 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 0/? | Not started | - |
 | 3. Freshness | 0/? | Not started | - |
 | 4. Content Expansion | 0/? | Not started | - |

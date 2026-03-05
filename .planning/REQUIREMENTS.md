@@ -7,10 +7,10 @@
 
 ### Architecture
 
-- [ ] **ARCH-01**: Tool handlers extracted from index.ts into separate modules under src/tools/
-- [ ] **ARCH-02**: Crawl orchestration extracted from index.ts into src/crawl.ts
-- [ ] **ARCH-03**: Unified crawl pipeline via ContentSource interface replacing separate doc/blog paths
-- [ ] **ARCH-04**: index.ts reduced to thin entry point (wiring only)
+- [x] **ARCH-01**: Tool handlers extracted from index.ts into separate modules under src/tools/
+- [x] **ARCH-02**: Crawl orchestration extracted from index.ts into src/crawl.ts
+- [x] **ARCH-03**: Unified crawl pipeline via ContentSource interface replacing separate doc/blog paths
+- [x] **ARCH-04**: index.ts reduced to thin entry point (wiring only)
 
 ### Trust
 
@@ -68,10 +68,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | Phase 1 | Pending |
-| ARCH-02 | Phase 1 | Pending |
-| ARCH-03 | Phase 1 | Pending |
-| ARCH-04 | Phase 1 | Pending |
+| ARCH-01 | Phase 1 | Complete |
+| ARCH-02 | Phase 1 | Complete |
+| ARCH-03 | Phase 1 | Complete |
+| ARCH-04 | Phase 1 | Complete |
 | TRST-01 | Phase 2 | Pending |
 | TRST-02 | Phase 2 | Pending |
 | TRST-03 | Phase 2 | Pending |
