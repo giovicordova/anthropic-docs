@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-05T17:25:40.317Z"
-last_activity: 2026-03-05 -- Completed 04-02 content source implementations
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-05T17:44:00.000Z"
+last_activity: 2026-03-05 -- Completed 05-01 tool layer integration
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 9
+  completed_plans: 9
   percent: 100
 ---
 
@@ -25,19 +25,19 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 
 ## Current Position
 
-Phase: 4 of 4 (Content Expansion)
-Plan: 2 of 2 in current phase (complete)
+Phase: 5 of 5 (Tool Layer Integration)
+Plan: 1 of 1 in current phase (complete)
 Status: Complete
-Last activity: 2026-03-05 -- Completed 04-02 content source implementations
+Last activity: 2026-03-05 -- Completed 05-01 tool layer integration
 
-Progress: [██████████] 100% (8/8 plans)
+Progress: [██████████] 100% (9/9 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 4min
-- Total execution time: ~32min
+- Total execution time: ~35min
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ Progress: [██████████] 100% (8/8 plans)
 | 02 | 2 | 7min | 3.5min |
 | 03 | 2 | 9min | 4.5min |
 | 04 | 2 | 8min | 4min |
+| 05 | 1 | 3min | 3min |
 
 **Recent Trend:**
 - Last 5 plans: 4min, 5min, 4min, 3min, 5min
@@ -61,6 +62,7 @@ Progress: [██████████] 100% (8/8 plans)
 | Phase 03 P02 | 4min | 2 tasks | 7 files |
 | Phase 04 P01 | 3min | 2 tasks | 8 files |
 | Phase 04 P02 | 5min | 2 tasks | 8 files |
+| Phase 05 P01 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -96,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase 04]: researchSource reuses fetchBlogPages with source param for batch fetch
 - [Phase 04]: fetchSitemapEntriesForPrefix parses sitemap inline (self-contained prefix filtering)
 - [Phase 04]: researchSource caps at MAX_RESEARCH_PAGES before passing to fetchBlogPages
+- [Phase 05]: model and research each get their own footer line (not grouped with doc sources)
+- [Phase 05]: model/research groups rendered after blog in list-sections output order
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T17:17:23Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-05T17:41:00Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

@@ -72,8 +72,8 @@
 | ARCH-02 | Phase 1 | Complete |
 | ARCH-03 | Phase 1 | Complete |
 | ARCH-04 | Phase 1 | Complete |
-| TRST-01 | Phase 2, Phase 5 | Pending |
-| TRST-02 | Phase 2, Phase 5 | Pending |
+| TRST-01 | Phase 2, Phase 5 | Complete |
+| TRST-02 | Phase 2, Phase 5 | Complete |
 | TRST-03 | Phase 2 | Complete |
 | TRST-04 | Phase 2 | Complete |
 | TRST-05 | Phase 2 | Complete |
@@ -83,8 +83,8 @@
 | FRSH-01 | Phase 3 | Complete |
 | FRSH-02 | Phase 3 | Complete |
 | FRSH-03 | Phase 3 | Complete |
-| CONT-01 | Phase 4, Phase 5 | Pending |
-| CONT-02 | Phase 4, Phase 5 | Pending |
+| CONT-01 | Phase 4, Phase 5 | Complete |
+| CONT-02 | Phase 4, Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
