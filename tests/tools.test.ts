@@ -13,7 +13,7 @@ import {
 import type { PageSection, SearchResult, GetDocPageResult, SectionRow } from "../src/types.js";
 import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
-import { STALE_DAYS, BLOG_STALE_DAYS } from "../src/config.js";
+import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../src/config.js";
 import { buildMetadataFooter } from "../src/tools/search.js";
 import { buildStatusText } from "../src/tools/status.js";
 
@@ -505,5 +505,78 @@ describe("failure info", () => {
 
     expect(status).toContain("Last docs failure: Connection timeout at 2026-03-05T10:00:00Z");
     expect(status).toContain("Last blog failure: Sitemap unavailable at 2026-03-05T11:00:00Z");
+  });
+});
+
+describe("status: model and research sources", () => {
+  let db: Database.Database;
+  let stmts: Statements;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("buildStatusText includes model page count, timestamp, and stale threshold", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+    setMetadata(stmts, "model_page_count", "3");
+    setMetadata(stmts, "last_model_crawl_timestamp", "2026-03-05T12:00:00Z");
+
+    const crawlState = {
+      getState: (_name: string) => "idle" as const,
+      getLastError: (_name: string) => null,
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).toContain("Model pages indexed: 3");
+    expect(status).toContain("Last model crawl: 2026-03-05T12:00:00Z");
+    expect(status).toContain(`Model stale threshold: ${MODEL_STALE_HOURS} hour(s)`);
+    expect(status).toContain("Model crawl state: idle");
+  });
+
+  it("buildStatusText includes research page count, timestamp, and stale threshold", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+    setMetadata(stmts, "research_page_count", "144");
+    setMetadata(stmts, "last_research_crawl_timestamp", "2026-03-05T11:00:00Z");
+
+    const crawlState = {
+      getState: (_name: string) => "idle" as const,
+      getLastError: (_name: string) => null,
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).toContain("Research papers indexed: 144");
+    expect(status).toContain("Last research crawl: 2026-03-05T11:00:00Z");
+    expect(status).toContain(`Research stale threshold: ${RESEARCH_STALE_HOURS} hour(s)`);
+    expect(status).toContain("Research crawl state: idle");
+  });
+
+  it("buildStatusText shows model and research errors when present", () => {
+    setMetadata(stmts, "last_crawl_timestamp", "2026-03-05T10:00:00Z");
+    setMetadata(stmts, "page_count", "100");
+    setMetadata(stmts, "blog_page_count", "50");
+    setMetadata(stmts, "last_blog_crawl_timestamp", "2026-03-04T10:00:00Z");
+
+    const crawlState = {
+      getState: (_name: string) => "failed" as const,
+      getLastError: (name: string) => {
+        if (name === "model") return { message: "Model fetch timeout", timestamp: "2026-03-05T13:00:00Z" };
+        if (name === "research") return { message: "Research sitemap error", timestamp: "2026-03-05T14:00:00Z" };
+        return null;
+      },
+    };
+
+    const status = buildStatusText(stmts, crawlState);
+
+    expect(status).toContain("Last model failure: Model fetch timeout at 2026-03-05T13:00:00Z");
+    expect(status).toContain("Last research failure: Research sitemap error at 2026-03-05T14:00:00Z");
   });
 });

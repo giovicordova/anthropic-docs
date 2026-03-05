@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseSitemap, parseSitemapWithLastmod, htmlToMarkdown, parseBlogPage, parseHtmlPage } from "../src/blog-parser.js";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { parseSitemap, parseSitemapWithLastmod, htmlToMarkdown, parseBlogPage, parseHtmlPage, fetchSitemapEntriesForPrefix, fetchBlogPages } from "../src/blog-parser.js";
 
 describe("parseSitemap", () => {
   it("extracts blog URLs matching BLOG_PATH_PREFIXES (excludes /research/)", () => {
@@ -233,5 +233,100 @@ describe("parseHtmlPage", () => {
     expect(page).not.toBeNull();
     expect(page!.title).toBe("some-paper");
     expect(page!.source).toBe("research");
+  });
+});
+
+// --- fetchSitemapEntriesForPrefix tests (mock HTTP) ---
+
+vi.mock("../src/fetch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/fetch.js")>();
+  return {
+    ...actual,
+    fetchWithTimeout: vi.fn(async () => new Response("", { status: 404 })),
+  };
+});
+
+import { fetchWithTimeout } from "../src/fetch.js";
+const mockFetchWithTimeout = vi.mocked(fetchWithTimeout);
+
+describe("fetchSitemapEntriesForPrefix", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns only URLs matching the given prefix", async () => {
+    const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset>
+  <url>
+    <loc>https://www.anthropic.com/research/paper-a</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://www.anthropic.com/news/post-1</loc>
+    <lastmod>2026-01-02</lastmod>
+  </url>
+  <url>
+    <loc>https://www.anthropic.com/research/paper-b</loc>
+    <lastmod>2026-01-03</lastmod>
+  </url>
+</urlset>`;
+
+    mockFetchWithTimeout.mockResolvedValue(new Response(sitemapXml, { status: 200 }));
+
+    const entries = await fetchSitemapEntriesForPrefix("/research/");
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].url).toBe("https://www.anthropic.com/research/paper-a");
+    expect(entries[0].lastmod).toBe("2026-01-01");
+    expect(entries[1].url).toBe("https://www.anthropic.com/research/paper-b");
+    expect(entries[1].lastmod).toBe("2026-01-03");
+  });
+
+  it("returns empty array on fetch failure", async () => {
+    mockFetchWithTimeout.mockResolvedValue(new Response("", { status: 500 }));
+
+    const entries = await fetchSitemapEntriesForPrefix("/research/");
+
+    expect(entries).toHaveLength(0);
+  });
+});
+
+describe("fetchBlogPages with source param", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("produces ParsedPage with source=research when source param provided", async () => {
+    mockFetchWithTimeout.mockResolvedValue(
+      new Response(
+        `<article><h1>Research Paper</h1><p>Content of a research paper for testing.</p></article>`,
+        { status: 200 }
+      )
+    );
+
+    const pages = await fetchBlogPages(
+      ["https://www.anthropic.com/research/test-paper"],
+      "research"
+    );
+
+    expect(pages).toHaveLength(1);
+    expect(pages[0].source).toBe("research");
+    expect(pages[0].title).toBe("Research Paper");
+  });
+
+  it("defaults to blog source when no source param", async () => {
+    mockFetchWithTimeout.mockResolvedValue(
+      new Response(
+        `<article><h1>Blog Post</h1><p>Content of a blog post for testing purposes.</p></article>`,
+        { status: 200 }
+      )
+    );
+
+    const pages = await fetchBlogPages(
+      ["https://www.anthropic.com/news/test-post"]
+    );
+
+    expect(pages).toHaveLength(1);
+    expect(pages[0].source).toBe("blog");
   });
 });
