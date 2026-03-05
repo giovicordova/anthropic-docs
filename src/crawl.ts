@@ -6,12 +6,13 @@ import {
   finalizeGeneration,
   getMetadata,
   setMetadata,
-  getIndexedBlogUrls,
+  getIndexedBlogUrlsWithTimestamps,
+  deleteBlogPages,
   prepareStatements,
 } from "./database.js";
 import { pagesToSections, fetchAndParse } from "./parser.js";
 import type { FetchAndParseOptions } from "./parser.js";
-import { fetchSitemapUrls, fetchBlogPages } from "./blog-parser.js";
+import { fetchSitemapEntries, fetchBlogPages } from "./blog-parser.js";
 import { STALE_DAYS, BLOG_STALE_DAYS, MIN_PAGE_RATIO } from "./config.js";
 
 // --- ContentSource implementations ---
@@ -56,12 +57,71 @@ export const blogSource: ContentSource = {
   metaCountKey: "blog_page_count",
   usesGeneration: false,
   async fetch(db: Database.Database) {
-    const sitemapUrls = await fetchSitemapUrls();
-    if (sitemapUrls.length === 0) return [];
-    const indexedSet = new Set(getIndexedBlogUrls(db));
-    const newUrls = sitemapUrls.filter((url) => !indexedSet.has(url));
-    if (newUrls.length === 0) return [];
-    return fetchBlogPages(newUrls);
+    // 1. Fetch sitemap entries (url + lastmod)
+    const sitemapEntries = await fetchSitemapEntries();
+    if (sitemapEntries.length === 0) return [];
+
+    // 2. Get indexed blog URLs with crawled_at timestamps
+    const indexedMap = getIndexedBlogUrlsWithTimestamps(db);
+    const sitemapUrlSet = new Set(sitemapEntries.map((e) => e.url));
+
+    // 3. Categorize each sitemap entry
+    const newUrls: string[] = [];
+    const updatedUrls: string[] = [];
+    let unchangedCount = 0;
+
+    for (const entry of sitemapEntries) {
+      const crawledAt = indexedMap.get(entry.url);
+      if (!crawledAt) {
+        // NEW: not in index
+        newUrls.push(entry.url);
+      } else if (entry.lastmod && entry.lastmod > crawledAt) {
+        // UPDATED: lastmod newer than crawled_at
+        updatedUrls.push(entry.url);
+      } else {
+        // UNCHANGED: lastmod <= crawled_at or lastmod is null
+        unchangedCount++;
+      }
+    }
+
+    // 4. Detect DELETED: in index but not in sitemap
+    const deletedUrls: string[] = [];
+    for (const url of indexedMap.keys()) {
+      if (!sitemapUrlSet.has(url)) {
+        deletedUrls.push(url);
+      }
+    }
+
+    // 5. Safety check: skip deletions if sitemap appears incomplete
+    if (deletedUrls.length > 0) {
+      if (sitemapEntries.length < indexedMap.size * MIN_PAGE_RATIO) {
+        console.error(
+          `[blog] Safety: sitemap has ${sitemapEntries.length} entries vs ${indexedMap.size} indexed. Skipping ${deletedUrls.length} deletions.`
+        );
+        deletedUrls.length = 0;
+      }
+    }
+
+    // 6. Delete removed posts
+    if (deletedUrls.length > 0) {
+      deleteBlogPages(db, deletedUrls);
+      console.error(`[blog] Deleted ${deletedUrls.length} removed posts.`);
+    }
+
+    // 7. Delete old rows for updated posts (will be re-inserted)
+    if (updatedUrls.length > 0) {
+      deleteBlogPages(db, updatedUrls);
+    }
+
+    console.error(
+      `[blog] Diff: ${newUrls.length} new, ${updatedUrls.length} updated, ${deletedUrls.length} deleted, ${unchangedCount} unchanged.`
+    );
+
+    // 8. Fetch new + updated URLs
+    const urlsToFetch = [...newUrls, ...updatedUrls];
+    if (urlsToFetch.length === 0) return [];
+
+    return fetchBlogPages(urlsToFetch);
   },
 };
 
