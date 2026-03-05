@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
-import { STALE_DAYS, BLOG_STALE_DAYS } from "../config.js";
+import { STALE_HOURS, BLOG_STALE_HOURS } from "../config.js";
 
 /** Minimal interface for status text building (testable without full CrawlManager) */
 export interface StatusCrawlInfo {
@@ -28,11 +28,11 @@ export function buildStatusText(stmts: Statements, crawl: StatusCrawlInfo): stri
     `- Last crawl: ${lastCrawl || "never"}`,
     `- Age: ${ageDays} days`,
     `- Crawl state: ${crawl.getState("docs")}`,
-    `- Stale threshold: ${STALE_DAYS} day(s)`,
+    `- Stale threshold: ${STALE_HOURS} hour(s)`,
     `- Blog posts indexed: ${blogPageCount}`,
     `- Last blog crawl: ${lastBlogCrawl || "never"}`,
     `- Blog crawl state: ${crawl.getState("blog")}`,
-    `- Blog stale threshold: ${BLOG_STALE_DAYS} day(s)`,
+    `- Blog stale threshold: ${BLOG_STALE_HOURS} hour(s)`,
   ];
 
   const docsError = crawl.getLastError("docs");

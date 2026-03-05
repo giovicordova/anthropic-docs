@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock fetchWithTimeout before importing modules that use it
+// Mock fetch utilities before importing modules that use them
 vi.mock("../src/fetch.js", () => ({
   fetchWithTimeout: vi.fn(),
+  conditionalFetch: vi.fn(),
+  contentHash: vi.fn(() => "mock-hash"),
 }));
 
-import { fetchWithTimeout } from "../src/fetch.js";
+import { fetchWithTimeout, conditionalFetch } from "../src/fetch.js";
 import { fetchAndParse } from "../src/parser.js";
 import { fetchBlogPages } from "../src/blog-parser.js";
 import { MAX_BLOG_PAGES } from "../src/config.js";
 
 const mockFetch = vi.mocked(fetchWithTimeout);
+const mockConditionalFetch = vi.mocked(conditionalFetch);
 
 function mockResponse(text: string, ok = true, status = 200): Response {
   return {
@@ -56,36 +59,51 @@ afterEach(() => {
 });
 
 describe("fetchAndParse network error handling", () => {
-  it("returns empty array when both sources timeout", async () => {
-    mockFetch.mockRejectedValue(new Error("The operation was aborted"));
+  it("returns empty pages when both sources timeout", async () => {
+    mockConditionalFetch.mockRejectedValue(new Error("The operation was aborted"));
 
     const result = await fetchAndParse();
 
-    expect(result).toEqual([]);
+    expect(result.pages).toEqual([]);
   });
 
   it("returns partial results when one source fails and the other succeeds", async () => {
     // Platform fails, code succeeds
-    mockFetch
+    mockConditionalFetch
       .mockRejectedValueOnce(new Error("The operation was aborted"))
-      .mockResolvedValueOnce(mockResponse(VALID_CODE_TEXT));
+      .mockResolvedValueOnce({
+        modified: true,
+        response: mockResponse(VALID_CODE_TEXT),
+        etag: undefined,
+        lastModified: undefined,
+      });
 
     const result = await fetchAndParse();
 
-    expect(result.length).toBeGreaterThan(0);
-    expect(result.every((p) => p.source === "code")).toBe(true);
+    expect(result.pages.length).toBeGreaterThan(0);
+    expect(result.pages.every((p) => p.source === "code")).toBe(true);
   });
 
   it("returns partial results when one source returns HTTP 500", async () => {
     // Platform returns 500, code succeeds
-    mockFetch
-      .mockResolvedValueOnce(mockResponse("Internal Server Error", false, 500))
-      .mockResolvedValueOnce(mockResponse(VALID_CODE_TEXT));
+    mockConditionalFetch
+      .mockResolvedValueOnce({
+        modified: true,
+        response: mockResponse("Internal Server Error", false, 500),
+        etag: undefined,
+        lastModified: undefined,
+      })
+      .mockResolvedValueOnce({
+        modified: true,
+        response: mockResponse(VALID_CODE_TEXT),
+        etag: undefined,
+        lastModified: undefined,
+      });
 
     const result = await fetchAndParse();
 
-    expect(result.length).toBeGreaterThan(0);
-    expect(result.every((p) => p.source === "code")).toBe(true);
+    expect(result.pages.length).toBeGreaterThan(0);
+    expect(result.pages.every((p) => p.source === "code")).toBe(true);
   });
 });
 

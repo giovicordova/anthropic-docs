@@ -1,6 +1,27 @@
 import { MAX_SECTION_SIZE, MIN_SECTION_SIZE, PLATFORM_DOCS_URL, CLAUDE_CODE_DOCS_URL } from "./config.js";
-import { fetchWithTimeout } from "./fetch.js";
+import { conditionalFetch, contentHash } from "./fetch.js";
 import type { Section, ParsedPage, DocSource, PageSection } from "./types.js";
+
+export interface FetchAndParseOptions {
+  platformEtag?: string | null;
+  platformLastModified?: string | null;
+  codeEtag?: string | null;
+  codeLastModified?: string | null;
+  platformContentHash?: string | null;
+  codeContentHash?: string | null;
+}
+
+export interface FetchAndParseResult {
+  pages: ParsedPage[];
+  platformEtag?: string;
+  platformLastModified?: string;
+  codeEtag?: string;
+  codeLastModified?: string;
+  platformContentHash?: string;
+  codeContentHash?: string;
+  skippedPlatform: boolean;
+  skippedCode: boolean;
+}
 
 export function splitIntoSections(markdown: string): Section[] {
   const lines = markdown.split("\n");
@@ -167,40 +188,78 @@ export function parsePages(text: string, defaultSource: "platform" | "code"): Pa
   return pages;
 }
 
-export async function fetchAndParse(): Promise<ParsedPage[]> {
-  const results: ParsedPage[] = [];
+export async function fetchAndParse(options?: FetchAndParseOptions): Promise<FetchAndParseResult> {
+  const result: FetchAndParseResult = {
+    pages: [],
+    skippedPlatform: false,
+    skippedCode: false,
+  };
 
-  const [platformResponse, codeResponse] = await Promise.allSettled([
-    fetchWithTimeout(PLATFORM_DOCS_URL),
-    fetchWithTimeout(CLAUDE_CODE_DOCS_URL),
+  const [platformResult, codeResult] = await Promise.allSettled([
+    conditionalFetch(PLATFORM_DOCS_URL, options?.platformEtag, options?.platformLastModified),
+    conditionalFetch(CLAUDE_CODE_DOCS_URL, options?.codeEtag, options?.codeLastModified),
   ]);
 
-  if (platformResponse.status === "fulfilled" && platformResponse.value.ok) {
-    const text = await platformResponse.value.text();
-    const pages = parsePages(text, "platform");
-    results.push(...pages);
-    console.error(`[parser] Platform docs: parsed ${pages.length} pages`);
+  // Platform docs
+  if (platformResult.status === "fulfilled") {
+    const pr = platformResult.value;
+    if (!pr.modified) {
+      console.error("[parser] Platform docs: 304 Not Modified, skipping.");
+      result.skippedPlatform = true;
+    } else if (pr.response && pr.response.ok) {
+      const text = await pr.response.text();
+      const hash = contentHash(text);
+      result.platformEtag = pr.etag;
+      result.platformLastModified = pr.lastModified;
+      result.platformContentHash = hash;
+
+      if (options?.platformContentHash && hash === options.platformContentHash) {
+        console.error("[parser] Platform docs: content hash unchanged, skipping re-parse.");
+        result.skippedPlatform = true;
+      } else {
+        const pages = parsePages(text, "platform");
+        result.pages.push(...pages);
+        console.error(`[parser] Platform docs: parsed ${pages.length} pages`);
+      }
+    } else {
+      const status = pr.response ? `HTTP ${pr.response.status}` : "unknown error";
+      console.error(`[parser] Failed to fetch platform docs: ${status}`);
+    }
   } else {
-    const reason = platformResponse.status === "rejected"
-      ? platformResponse.reason?.message
-      : `HTTP ${(platformResponse as PromiseFulfilledResult<Response>).value.status}`;
-    console.error(`[parser] Failed to fetch platform docs: ${reason}`);
+    console.error(`[parser] Failed to fetch platform docs: ${platformResult.reason?.message}`);
   }
 
-  if (codeResponse.status === "fulfilled" && codeResponse.value.ok) {
-    const text = await codeResponse.value.text();
-    const pages = parsePages(text, "code");
-    results.push(...pages);
-    console.error(`[parser] Claude Code docs: parsed ${pages.length} pages`);
+  // Code docs
+  if (codeResult.status === "fulfilled") {
+    const cr = codeResult.value;
+    if (!cr.modified) {
+      console.error("[parser] Claude Code docs: 304 Not Modified, skipping.");
+      result.skippedCode = true;
+    } else if (cr.response && cr.response.ok) {
+      const text = await cr.response.text();
+      const hash = contentHash(text);
+      result.codeEtag = cr.etag;
+      result.codeLastModified = cr.lastModified;
+      result.codeContentHash = hash;
+
+      if (options?.codeContentHash && hash === options.codeContentHash) {
+        console.error("[parser] Claude Code docs: content hash unchanged, skipping re-parse.");
+        result.skippedCode = true;
+      } else {
+        const pages = parsePages(text, "code");
+        result.pages.push(...pages);
+        console.error(`[parser] Claude Code docs: parsed ${pages.length} pages`);
+      }
+    } else {
+      const status = cr.response ? `HTTP ${cr.response.status}` : "unknown error";
+      console.error(`[parser] Failed to fetch code docs: ${status}`);
+    }
   } else {
-    const reason = codeResponse.status === "rejected"
-      ? codeResponse.reason?.message
-      : `HTTP ${(codeResponse as PromiseFulfilledResult<Response>).value.status}`;
-    console.error(`[parser] Failed to fetch code docs: ${reason}`);
+    console.error(`[parser] Failed to fetch code docs: ${codeResult.reason?.message}`);
   }
 
-  console.error(`[parser] Total: ${results.length} pages`);
-  return results;
+  console.error(`[parser] Total: ${result.pages.length} pages`);
+  return result;
 }
 
 export function pagesToSections(page: ParsedPage): PageSection[] {

@@ -7,9 +7,10 @@ import {
   getMetadata,
   setMetadata,
   getIndexedBlogUrls,
+  prepareStatements,
 } from "./database.js";
-import { pagesToSections } from "./parser.js";
-import { fetchAndParse } from "./parser.js";
+import { pagesToSections, fetchAndParse } from "./parser.js";
+import type { FetchAndParseOptions } from "./parser.js";
 import { fetchSitemapUrls, fetchBlogPages } from "./blog-parser.js";
 import { STALE_DAYS, BLOG_STALE_DAYS, MIN_PAGE_RATIO } from "./config.js";
 
@@ -21,8 +22,30 @@ export const docSource: ContentSource = {
   metaTimestampKey: "last_crawl_timestamp",
   metaCountKey: "page_count",
   usesGeneration: true,
-  async fetch() {
-    return fetchAndParse();
+  async fetch(db: Database.Database) {
+    const stmts = prepareStatements(db);
+    const options: FetchAndParseOptions = {
+      platformEtag: getMetadata(stmts, "platform_etag"),
+      platformLastModified: getMetadata(stmts, "platform_last_modified"),
+      platformContentHash: getMetadata(stmts, "platform_content_hash"),
+      codeEtag: getMetadata(stmts, "code_etag"),
+      codeLastModified: getMetadata(stmts, "code_last_modified"),
+      codeContentHash: getMetadata(stmts, "code_content_hash"),
+    };
+
+    const result = await fetchAndParse(options);
+
+    // Store new conditional headers/hashes
+    if (result.platformEtag) setMetadata(stmts, "platform_etag", result.platformEtag);
+    if (result.platformLastModified) setMetadata(stmts, "platform_last_modified", result.platformLastModified);
+    if (result.platformContentHash) setMetadata(stmts, "platform_content_hash", result.platformContentHash);
+    if (result.codeEtag) setMetadata(stmts, "code_etag", result.codeEtag);
+    if (result.codeLastModified) setMetadata(stmts, "code_last_modified", result.codeLastModified);
+    if (result.codeContentHash) setMetadata(stmts, "code_content_hash", result.codeContentHash);
+
+    // If both sources were skipped (304/hash match), return empty array
+    // The caller (crawlSource) will treat empty + no error as "no changes"
+    return result.pages;
   },
 };
 
@@ -86,6 +109,14 @@ export class CrawlManager {
       const pages = await source.fetch(this.db);
 
       if (source.usesGeneration) {
+        // Zero pages + no error = conditional skip (304 or hash match)
+        if (pages.length === 0) {
+          console.error(`[server] ${source.name}: no changes detected (conditional skip).`);
+          setMetadata(this.stmts, source.metaTimestampKey, new Date().toISOString());
+          this.states.set(source.name, "idle");
+          return 0;
+        }
+
         const currentGen = getCurrentGeneration(this.stmts);
         const newGen = currentGen + 1;
 

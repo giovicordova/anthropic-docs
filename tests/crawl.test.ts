@@ -106,26 +106,26 @@ describe("staleness calculation", () => {
     expect(shouldCrawl(null, STALE_DAYS)).toBe(true);
   });
 
-  it("triggers crawl when age exceeds STALE_DAYS", () => {
-    // 2 days ago
-    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-    expect(shouldCrawl(twoDaysAgo, STALE_DAYS)).toBe(true);
+  it("triggers crawl when age exceeds STALE_DAYS (~3 hours)", () => {
+    // 4 hours ago -- exceeds 3h threshold
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    expect(shouldCrawl(fourHoursAgo, STALE_DAYS)).toBe(true);
   });
 
-  it("does NOT trigger crawl when age is below STALE_DAYS", () => {
-    // 1 hour ago
+  it("does NOT trigger crawl when age is below STALE_DAYS (~3 hours)", () => {
+    // 1 hour ago -- within 3h threshold
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     expect(shouldCrawl(oneHourAgo, STALE_DAYS)).toBe(false);
   });
 
-  it("uses BLOG_STALE_DAYS (7) for blog staleness", () => {
-    // 3 days ago -- should NOT trigger blog crawl
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    expect(shouldCrawl(threeDaysAgo, BLOG_STALE_DAYS)).toBe(false);
+  it("uses BLOG_STALE_DAYS (~8 hours) for blog staleness", () => {
+    // 5 hours ago -- should NOT trigger blog crawl (within 8h)
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+    expect(shouldCrawl(fiveHoursAgo, BLOG_STALE_DAYS)).toBe(false);
 
-    // 8 days ago -- SHOULD trigger blog crawl
-    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
-    expect(shouldCrawl(eightDaysAgo, BLOG_STALE_DAYS)).toBe(true);
+    // 10 hours ago -- SHOULD trigger blog crawl (exceeds 8h)
+    const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+    expect(shouldCrawl(tenHoursAgo, BLOG_STALE_DAYS)).toBe(true);
   });
 });
 
@@ -206,6 +206,45 @@ describe("page count threshold", () => {
 
     expect(result).toBe(60);
     expect(manager.getState("docs")).toBe("idle");
+  });
+});
+
+describe("conditional skip (304/hash match)", () => {
+  let db: Database.Database;
+  let stmts: ReturnType<typeof prepareStatements>;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("treats zero pages with no error as conditional skip (not threshold failure)", async () => {
+    // Simulate previous crawl with 100 pages
+    setMetadata(stmts, "page_count", "100");
+
+    // Source returns 0 pages (simulating 304 conditional skip)
+    const source = makeGenSource([]);
+    const manager = new CrawlManager(db, stmts, [source]);
+    const result = await manager.crawlSource(source);
+
+    // Should succeed (idle), not fail
+    expect(result).toBe(0);
+    expect(manager.getState("docs")).toBe("idle");
+    expect(manager.getLastError("docs")).toBeNull();
+  });
+
+  it("updates timestamp on conditional skip", async () => {
+    setMetadata(stmts, "page_count", "100");
+
+    const source = makeGenSource([]);
+    const manager = new CrawlManager(db, stmts, [source]);
+    await manager.crawlSource(source);
+
+    // Timestamp should be updated even though no pages changed
+    const timestamp = db
+      .prepare("SELECT value FROM metadata WHERE key = 'last_crawl_timestamp'")
+      .get() as { value: string } | undefined;
+    expect(timestamp).toBeDefined();
   });
 });
 
