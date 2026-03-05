@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A local MCP server that indexes Anthropic documentation (platform.claude.com, code.claude.com, API reference) into a searchable SQLite FTS5 database. Runs on stdio, exposes 4 tools for Claude Code to search, browse, list, and refresh docs.
+A local MCP server that indexes Anthropic documentation (platform.claude.com, code.claude.com, API reference) into a searchable SQLite FTS5 database. Runs on stdio, exposes 5 tools for Claude Code to search, browse, list, refresh, and check index status.
 
 ## Commands
 
@@ -30,9 +30,9 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
 Five source files, each with a single responsibility:
 
 - **src/config.ts** — Centralized constants (timeouts, concurrency, URLs, thresholds, DB path). All magic numbers live here.
-- **src/index.ts** — MCP server entry point. Registers 4 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`), manages stdio transport, crawl state tracking (idle/crawling/failed), first-run detection, and daily staleness check.
-- **src/crawler.ts** — Fetches pages from 3 sources (platform docs via `<article>`, API reference via `<div class="stldocs-root">`, Claude Code docs via llms-full.txt). Uses generation-based atomic crawl (old data preserved until new crawl completes). All fetches have 15s timeouts.
-- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap, FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, `get_doc_page` with 3-step fuzzy matching + disambiguation, metadata tracking. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
+- **src/index.ts** — MCP server entry point. Registers 5 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`, `index_status`), manages stdio transport, crawl state tracking (idle/crawling/failed), first-run detection, daily staleness check, and orphaned generation cleanup on startup.
+- **src/crawler.ts** — Fetches pages from 3 sources (platform docs via `<article>`, API reference via `<div class="stldocs-root">`, Claude Code docs via llms-full.txt). Uses generation-based atomic crawl (old data preserved until new crawl completes). All fetches have 15s timeouts. Concurrency: 10 parallel fetches.
+- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap, FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, `get_doc_page` with 3-step fuzzy matching + disambiguation, metadata tracking, cached prepared statements via `Statements` interface, and batched section inserts per page. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
 - **src/markdown.ts** — HTML→Markdown via Turndown, section splitting at h2/h3 boundaries, stub filtering, oversized section splitting at h4.
 
 ## Key Conventions
