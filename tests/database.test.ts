@@ -12,6 +12,7 @@ import {
   listSections,
   getMetadata,
   setMetadata,
+  getIndexedBlogUrls,
 } from "../src/database.js";
 import type { PageSection } from "../src/types.js";
 
@@ -133,6 +134,51 @@ describe("database", () => {
     const results = searchDocs(stmts, "model capabilities", 10, "blog");
     expect(results).toHaveLength(1);
     expect(results[0].title).toBe("Test Blog Post");
+  });
+
+  it("generation swap preserves blog rows", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/test-post",
+      url: "https://www.anthropic.com/news/test-post",
+      title: "Blog Post",
+      source: "blog",
+      content: "Blog content that should survive generation swaps and remain searchable.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    insertPageSections(db, stmts, [makeSection({
+      content: "New docs content from the second generation crawl cycle.",
+    })], 2);
+    finalizeGeneration(db, stmts, 2);
+
+    const blogResults = searchDocs(stmts, "survive generation", 10, "blog");
+    expect(blogResults).toHaveLength(1);
+    expect(blogResults[0].title).toBe("Blog Post");
+  });
+
+  it("returns indexed blog URLs for sitemap diff", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/post-a",
+      url: "https://www.anthropic.com/news/post-a",
+      source: "blog",
+      content: "Content of blog post A with enough words to be meaningful in search.",
+    })], 1);
+    insertPageSections(db, stmts, [makeSection({
+      path: "/research/post-b",
+      url: "https://www.anthropic.com/research/post-b",
+      source: "blog",
+      content: "Content of blog post B with enough words to be meaningful in search.",
+    })], 1);
+    insertPageSections(db, stmts, [makeSection({
+      source: "platform",
+      content: "Platform doc content should not appear in blog URL list ever.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const blogUrls = getIndexedBlogUrls(db);
+    expect(blogUrls).toHaveLength(2);
+    expect(blogUrls).toContain("https://www.anthropic.com/news/post-a");
+    expect(blogUrls).toContain("https://www.anthropic.com/research/post-b");
   });
 
   it("stores and retrieves metadata", () => {

@@ -74,7 +74,7 @@ export function prepareStatements(db: Database.Database): Statements {
       INSERT INTO pages_fts (rowid, title, section_heading, content)
       VALUES (?, ?, ?, ?)
     `),
-    deleteOldGen: db.prepare("DELETE FROM pages WHERE generation != ?"),
+    deleteOldGen: db.prepare("DELETE FROM pages WHERE generation != ? AND source != 'blog'"),
     rebuildFts: "INSERT INTO pages_fts(pages_fts) VALUES('rebuild')",
     setGeneration: db.prepare(
       "INSERT OR REPLACE INTO metadata (key, value) VALUES ('current_generation', ?)"
@@ -266,4 +266,9 @@ export function getMetadata(stmts: Statements, key: string): string | null {
 
 export function setMetadata(stmts: Statements, key: string, value: string): void {
   stmts.setMetadata.run(key, value);
+}
+
+export function getIndexedBlogUrls(db: Database.Database): string[] {
+  const rows = db.prepare("SELECT DISTINCT url FROM pages WHERE source = 'blog'").all() as { url: string }[];
+  return rows.map((r) => r.url);
 }
