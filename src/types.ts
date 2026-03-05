@@ -84,6 +84,15 @@ export interface SectionRow {
   source: string;
 }
 
+// --- Conditional fetch ---
+
+export interface ConditionalFetchResult {
+  modified: boolean;
+  response?: Response;
+  etag?: string;
+  lastModified?: string;
+}
+
 // --- Cached prepared statements ---
 
 export interface Statements {
