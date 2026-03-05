@@ -3,3 +3,5 @@ dist/
 *.db
 .DS_Store
 .claude/
+.planning/
+smoke_stderr.txt
