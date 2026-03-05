@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { DB_DIR } from "./config.js";
-import type { PageSection, SearchResult, GetDocPageResult, Statements } from "./types.js";
+import type { PageSection, SearchResult, GetDocPageResult, Statements, SearchRow, PageRow, SectionRow } from "./types.js";
 
 const DB_PATH = path.join(DB_DIR, "docs.db");
 
@@ -15,6 +15,7 @@ export function initDatabase(dbPath?: string): Database.Database {
 
   const db = new Database(resolvedPath);
   db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 5000");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS pages (
@@ -168,7 +169,7 @@ export function cleanupOrphanedGenerations(
   stmts: Statements
 ): number {
   const currentGen = getCurrentGeneration(stmts);
-  const result = db.prepare("DELETE FROM pages WHERE generation != ?").run(currentGen);
+  const result = db.prepare("DELETE FROM pages WHERE generation != ? AND source != 'blog'").run(currentGen);
   if (result.changes > 0) {
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
   }
@@ -201,48 +202,53 @@ export function searchDocs(
   const ftsQuery = preprocessQuery(query);
   const useSourceFilter = source && source !== "all";
 
-  const rows = useSourceFilter
-    ? stmts.searchWithSource.all(ftsQuery, source, limit)
-    : stmts.search.all(ftsQuery, limit);
+  try {
+    const rows: SearchRow[] = useSourceFilter
+      ? stmts.searchWithSource.all(ftsQuery, source, limit) as SearchRow[]
+      : stmts.search.all(ftsQuery, limit) as SearchRow[];
 
-  return (rows as any[]).map((row: any) => ({
-    title: row.title,
-    url: row.url,
-    sectionHeading: row.section_heading,
-    snippet: row.snippet,
-    relevanceScore: Math.abs(row.rank),
-  }));
+    return rows.map((row) => ({
+      title: row.title,
+      url: row.url,
+      sectionHeading: row.section_heading,
+      snippet: row.snippet,
+      relevanceScore: Math.abs(row.rank),
+    }));
+  } catch (err) {
+    console.error(`[database] FTS5 query error for "${query}": ${(err as Error).message}`);
+    return [];
+  }
 }
 
 export function getDocPage(
   stmts: Statements,
   searchPath: string
 ): GetDocPageResult | null {
-  let rows = stmts.exactPath.all(searchPath) as any[];
+  let rows = stmts.exactPath.all(searchPath) as PageRow[];
 
   if (rows.length === 0) {
-    rows = stmts.suffixPath.all(`%${searchPath}`) as any[];
+    rows = stmts.suffixPath.all(`%${searchPath}`) as PageRow[];
   }
 
   if (rows.length === 0) {
-    rows = stmts.segmentPath.all(`%${searchPath}/%`) as any[];
+    rows = stmts.segmentPath.all(`%${searchPath}/%`) as PageRow[];
   }
 
   if (rows.length === 0) return null;
 
-  const distinctPaths = [...new Set(rows.map((r: any) => r.path))];
+  const distinctPaths = [...new Set(rows.map((r) => r.path))];
 
   if (distinctPaths.length === 1) {
     return {
       type: "page",
       title: rows[0].title,
       url: rows[0].url,
-      content: rows.map((r: any) => r.content).join("\n\n"),
+      content: rows.map((r) => r.content).join("\n\n"),
     };
   }
 
   const matches = distinctPaths.map((p) => {
-    const row = rows.find((r: any) => r.path === p);
+    const row = rows.find((r) => r.path === p)!;
     return { path: p, title: row.title, url: row.url };
   });
 
@@ -252,11 +258,11 @@ export function getDocPage(
 export function listSections(
   stmts: Statements,
   source?: string
-): { path: string; title: string; source: string }[] {
+): SectionRow[] {
   if (source && source !== "all") {
-    return stmts.listBySource.all(source) as { path: string; title: string; source: string }[];
+    return stmts.listBySource.all(source) as SectionRow[];
   }
-  return stmts.listAll.all() as { path: string; title: string; source: string }[];
+  return stmts.listAll.all() as SectionRow[];
 }
 
 export function getMetadata(stmts: Statements, key: string): string | null {

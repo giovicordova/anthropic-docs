@@ -46,6 +46,29 @@ export type GetDocPageResult =
   | { type: "page"; title: string; url: string; content: string }
   | { type: "disambiguation"; matches: { path: string; title: string; url: string }[] };
 
+// --- Database row types ---
+
+export interface SearchRow {
+  title: string;
+  url: string;
+  section_heading: string | null;
+  snippet: string;
+  rank: number;
+}
+
+export interface PageRow {
+  title: string;
+  url: string;
+  path: string;
+  content: string;
+}
+
+export interface SectionRow {
+  path: string;
+  title: string;
+  source: string;
+}
+
 // --- Cached prepared statements ---
 
 export interface Statements {

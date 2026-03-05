@@ -36,6 +36,7 @@ if (orphansRemoved > 0) {
 // --- Crawl state management ---
 type CrawlState = "idle" | "crawling" | "failed";
 let crawlState: CrawlState = "idle";
+let blogCrawlState: CrawlState = "idle";
 
 async function startCrawl(): Promise<number> {
   if (crawlState === "crawling") {
@@ -71,24 +72,31 @@ async function startCrawl(): Promise<number> {
 }
 
 async function startBlogCrawl(): Promise<number> {
+  if (blogCrawlState === "crawling") {
+    console.error("[server] Blog crawl already in progress, skipping.");
+    return -1;
+  }
+  blogCrawlState = "crawling";
   try {
     console.error("[server] Starting blog crawl...");
     const sitemapUrls = await fetchSitemapUrls();
     if (sitemapUrls.length === 0) {
       console.error("[server] No blog URLs found in sitemap.");
+      blogCrawlState = "idle";
       return 0;
     }
 
-    const indexedUrls = getIndexedBlogUrls(db);
-    const newUrls = sitemapUrls.filter((url) => !indexedUrls.includes(url));
+    const indexedSet = new Set(getIndexedBlogUrls(db));
+    const newUrls = sitemapUrls.filter((url) => !indexedSet.has(url));
 
     if (newUrls.length === 0) {
-      console.error(`[server] Blog index up to date (${indexedUrls.length} posts).`);
+      console.error(`[server] Blog index up to date (${indexedSet.size} posts).`);
       setMetadata(stmts, "last_blog_crawl_timestamp", new Date().toISOString());
+      blogCrawlState = "idle";
       return 0;
     }
 
-    console.error(`[server] Found ${newUrls.length} new blog posts (${indexedUrls.length} already indexed).`);
+    console.error(`[server] Found ${newUrls.length} new blog posts (${indexedSet.size} already indexed).`);
     const pages = await fetchBlogPages(newUrls);
 
     const currentGen = getCurrentGeneration(stmts);
@@ -99,14 +107,14 @@ async function startBlogCrawl(): Promise<number> {
       totalSections += sections.length;
     }
 
-    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
-
     setMetadata(stmts, "last_blog_crawl_timestamp", new Date().toISOString());
-    setMetadata(stmts, "blog_page_count", String(indexedUrls.length + pages.length));
+    setMetadata(stmts, "blog_page_count", String(indexedSet.size + pages.length));
 
     console.error(`[server] Blog crawl done. ${pages.length} new posts, ${totalSections} sections indexed.`);
+    blogCrawlState = "idle";
     return pages.length;
   } catch (err) {
+    blogCrawlState = "failed";
     console.error(`[server] Blog crawl failed: ${(err as Error).message}`);
     return 0;
   }
@@ -386,7 +394,7 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
-    if (crawlState === "crawling") {
+    if (crawlState === "crawling" || blogCrawlState === "crawling") {
       return {
         content: [
           {
@@ -400,12 +408,11 @@ server.registerTool(
     const lastCrawl = getMetadata(stmts, "last_crawl_timestamp");
     const pageCount = getMetadata(stmts, "page_count") || "unknown";
 
-    startCrawl().catch((err) =>
-      console.error("[server] Refresh crawl failed:", err.message)
-    );
-    startBlogCrawl().catch((err) =>
-      console.error("[server] Blog refresh failed:", err.message)
-    );
+    // Sequence: doc crawl first, then blog crawl (blog reads generation set by doc crawl)
+    startCrawl()
+      .catch((err) => console.error("[server] Refresh crawl failed:", err.message))
+      .then(() => startBlogCrawl())
+      .catch((err) => console.error("[server] Blog refresh failed:", err.message));
 
     return {
       content: [

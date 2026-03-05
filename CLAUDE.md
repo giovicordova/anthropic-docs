@@ -27,14 +27,15 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
             anthropic.com/sitemap.xml → HTML    (weekly, incremental)
 ```
 
-Six source files, each with a single responsibility:
+Seven source files, each with a single responsibility:
 
 - **src/types.ts** — Shared interfaces (`ParsedPage`, `Section`, `PageSection`, `SearchResult`, `GetDocPageResult`, `Statements`). No logic.
 - **src/config.ts** — Centralized constants (timeouts, URLs, thresholds, DB path). All magic numbers live here.
+- **src/fetch.ts** — Shared `fetchWithTimeout` utility used by both parsers. Timeout-based abort, User-Agent header.
 - **src/parser.ts** — Fetches and parses `llms-full.txt` from both sources. Splits pages at `# heading` + `URL:`/`Source:` boundaries, splits content into sections at h2/h3, filters stubs, splits oversized sections at h4. Pure markdown parsing, no HTML.
 - **src/blog-parser.ts** — Fetches blog posts from anthropic.com via sitemap.xml. Parses sitemap XML for blog URLs (/news, /research, /engineering), fetches HTML pages in batches (10 concurrent, 200ms delay), converts HTML to markdown via `node-html-markdown`, extracts article content from `<article>` or `<main>` tags. Incremental: only fetches URLs not already indexed (sitemap-diff).
-- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap (blog rows excluded from generation swap), FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing, `get_doc_page` with 3-step fuzzy matching + disambiguation, metadata tracking, cached prepared statements via `Statements` interface, batched section inserts per page, and `getIndexedBlogUrls` for sitemap-diff. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
-- **src/index.ts** — MCP server entry point. Registers 5 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`, `index_status`), manages stdio transport, crawl state tracking (idle/crawling/failed), first-run detection, daily staleness check for docs, weekly staleness check for blog, and orphaned generation cleanup on startup.
+- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap (blog rows excluded from generation swap and orphan cleanup), FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing and FTS5 error handling, `get_doc_page` with 3-step fuzzy matching + disambiguation, typed row interfaces (`SearchRow`, `PageRow`, `SectionRow`), metadata tracking, cached prepared statements via `Statements` interface, batched section inserts per page, `busy_timeout` for multi-process safety, and `getIndexedBlogUrls` for sitemap-diff. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
+- **src/index.ts** — MCP server entry point. Registers 5 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`, `index_status`), manages stdio transport, separate crawl state tracking for docs and blog (idle/crawling/failed), first-run detection, daily staleness check for docs, weekly staleness check for blog, sequenced refresh (doc crawl completes before blog crawl starts), and orphaned generation cleanup on startup.
 
 ## Data Sources
 
@@ -52,5 +53,5 @@ Six source files, each with a single responsibility:
 - All logging goes to **stderr** (`console.error`). Never use `console.log` — it corrupts the JSON-RPC stdio transport.
 - Each indexed page is split into sections at h2/h3 headings. Sections are the unit of search and retrieval.
 - The `source` column tags content as `"platform"`, `"code"`, `"api-reference"`, or `"blog"` for filtered search. API reference pages are auto-detected by path (`/docs/en/api/`). Blog posts are tagged `"blog"` and excluded from the doc generation swap (they persist across doc re-crawls).
-- Blog staleness is 7 days (vs 1 day for docs). Blog crawl is incremental (sitemap-diff), not full re-crawl.
+- Blog staleness is 7 days (vs 1 day for docs). Blog crawl is incremental (sitemap-diff with Set lookup), not full re-crawl. Capped at `MAX_BLOG_PAGES` (1000) URLs per crawl.
 - Conventional commits: `type(scope): description`.

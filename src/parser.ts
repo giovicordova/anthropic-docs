@@ -1,4 +1,5 @@
-import { MAX_SECTION_SIZE, MIN_SECTION_SIZE, PLATFORM_DOCS_URL, CLAUDE_CODE_DOCS_URL, FETCH_TIMEOUT_MS } from "./config.js";
+import { MAX_SECTION_SIZE, MIN_SECTION_SIZE, PLATFORM_DOCS_URL, CLAUDE_CODE_DOCS_URL } from "./config.js";
+import { fetchWithTimeout } from "./fetch.js";
 import type { Section, ParsedPage, DocSource, PageSection } from "./types.js";
 
 export function splitIntoSections(markdown: string): Section[] {
@@ -164,15 +165,6 @@ export function parsePages(text: string, defaultSource: "platform" | "code"): Pa
   }
 
   return pages;
-}
-
-function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, {
-    signal: controller.signal,
-    headers: { "User-Agent": "anthropic-docs-mcp/2.0 (local indexer)" },
-  }).finally(() => clearTimeout(timeout));
 }
 
 export async function fetchAndParse(): Promise<ParsedPage[]> {

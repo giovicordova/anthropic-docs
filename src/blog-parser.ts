@@ -3,8 +3,9 @@ import {
   BLOG_SITEMAP_URL,
   BLOG_CONCURRENCY,
   BLOG_PATH_PREFIXES,
-  FETCH_TIMEOUT_MS,
+  MAX_BLOG_PAGES,
 } from "./config.js";
+import { fetchWithTimeout } from "./fetch.js";
 import type { ParsedPage } from "./types.js";
 
 // --- Pure functions (exported for testing) ---
@@ -67,16 +68,7 @@ export function parseBlogPage(url: string, html: string): ParsedPage | null {
   return { title, url, path, content, source: "blog" };
 }
 
-// --- Fetch helpers (not exported for testing) ---
-
-function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, {
-    signal: controller.signal,
-    headers: { "User-Agent": "anthropic-docs-mcp/2.0 (local indexer)" },
-  }).finally(() => clearTimeout(timeout));
-}
+// --- Fetch functions ---
 
 export async function fetchSitemapUrls(): Promise<string[]> {
   try {
@@ -101,6 +93,11 @@ function delay(ms: number): Promise<void> {
 }
 
 export async function fetchBlogPages(urls: string[]): Promise<ParsedPage[]> {
+  if (urls.length > MAX_BLOG_PAGES) {
+    console.error(`[blog-parser] Warning: ${urls.length} URLs exceeds cap of ${MAX_BLOG_PAGES}. Truncating.`);
+    urls = urls.slice(0, MAX_BLOG_PAGES);
+  }
+
   const pages: ParsedPage[] = [];
   const totalBatches = Math.ceil(urls.length / BLOG_CONCURRENCY);
 
