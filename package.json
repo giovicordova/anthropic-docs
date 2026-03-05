@@ -10,7 +10,13 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "keywords": ["mcp", "anthropic", "claude", "documentation", "claude-code"],
+  "keywords": [
+    "mcp",
+    "anthropic",
+    "claude",
+    "documentation",
+    "claude-code"
+  ],
   "author": "giovicordova",
   "license": "ISC",
   "type": "module",
@@ -20,13 +26,12 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
-    "turndown": "^7.2.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.3",
-    "@types/turndown": "^5.0.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
