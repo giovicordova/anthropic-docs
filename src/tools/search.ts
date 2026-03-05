@@ -3,13 +3,15 @@ import { z } from "zod";
 import { searchDocs, getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
-import { STALE_DAYS, BLOG_STALE_DAYS } from "../config.js";
+import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS } from "../config.js";
 
-const ALL_SOURCES = ["platform", "code", "api-reference", "blog"];
+const ALL_SOURCES = ["platform", "code", "api-reference", "blog", "model", "research"];
 
 export function buildMetadataFooter(stmts: Statements, sources: string[]): string {
-  const docSources = sources.filter((s) => s !== "blog");
+  const docSources = sources.filter((s) => s !== "blog" && s !== "model" && s !== "research");
   const hasBlog = sources.includes("blog");
+  const hasModel = sources.includes("model");
+  const hasResearch = sources.includes("research");
 
   const parts: string[] = [];
   const staleNames: string[] = [];
@@ -26,6 +28,20 @@ export function buildMetadataFooter(stmts: Statements, sources: string[]): strin
     const ageDays = ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : null;
     parts.push(`blog: last crawled ${ts || "never"}`);
     if (ageDays !== null && ageDays > BLOG_STALE_DAYS) staleNames.push("blog");
+  }
+
+  if (hasModel) {
+    const ts = getMetadata(stmts, "last_model_crawl_timestamp");
+    const ageDays = ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : null;
+    parts.push(`model: last crawled ${ts || "never"}`);
+    if (ageDays !== null && ageDays > MODEL_STALE_DAYS) staleNames.push("model");
+  }
+
+  if (hasResearch) {
+    const ts = getMetadata(stmts, "last_research_crawl_timestamp");
+    const ageDays = ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : null;
+    parts.push(`research: last crawled ${ts || "never"}`);
+    if (ageDays !== null && ageDays > RESEARCH_STALE_DAYS) staleNames.push("research");
   }
 
   let footer = "\n\n---\n" + parts.join(" | ");
@@ -54,7 +70,7 @@ export function registerSearchTool(
       inputSchema: {
         query: z.string().describe("Search query string. Use specific terms for best results."),
         source: z
-          .enum(["all", "platform", "code", "api-reference", "blog"])
+          .enum(["all", "platform", "code", "api-reference", "blog", "model", "research"])
           .default("all")
           .describe("Filter by source: 'platform', 'code', 'api-reference', 'blog', or 'all' (default)."),
         limit: z

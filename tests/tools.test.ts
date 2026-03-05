@@ -13,7 +13,7 @@ import {
 import type { PageSection, SearchResult, GetDocPageResult, SectionRow } from "../src/types.js";
 import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
-import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../src/config.js";
+import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../src/config.js";
 import { buildMetadataFooter } from "../src/tools/search.js";
 import { buildStatusText } from "../src/tools/status.js";
 
@@ -426,6 +426,64 @@ describe("staleness metadata", () => {
     // All three should appear together with one timestamp
     expect(footer).toContain("platform, code, api-reference: last crawled");
     expect(footer).toContain(docTs);
+  });
+
+  it("model source uses its own timestamp in footer", () => {
+    const modelTs = "2026-03-05T14:00:00Z";
+    setMetadata(stmts, "last_model_crawl_timestamp", modelTs);
+
+    const footer = buildMetadataFooter(stmts, ["model"]);
+
+    expect(footer).toContain(`model: last crawled ${modelTs}`);
+    expect(footer).not.toContain("platform");
+    expect(footer).not.toContain("code");
+  });
+
+  it("research source uses its own timestamp in footer", () => {
+    const researchTs = "2026-03-05T15:00:00Z";
+    setMetadata(stmts, "last_research_crawl_timestamp", researchTs);
+
+    const footer = buildMetadataFooter(stmts, ["research"]);
+
+    expect(footer).toContain(`research: last crawled ${researchTs}`);
+    expect(footer).not.toContain("platform");
+    expect(footer).not.toContain("code");
+  });
+
+  it("warns when model index is stale", () => {
+    const staleTs = new Date(Date.now() - (MODEL_STALE_DAYS + 1) * 86400000).toISOString();
+    setMetadata(stmts, "last_model_crawl_timestamp", staleTs);
+
+    const footer = buildMetadataFooter(stmts, ["model"]);
+
+    expect(footer).toContain("**Warning: stale data**");
+    expect(footer).toContain("model");
+  });
+
+  it("warns when research index is stale", () => {
+    const staleTs = new Date(Date.now() - (RESEARCH_STALE_DAYS + 1) * 86400000).toISOString();
+    setMetadata(stmts, "last_research_crawl_timestamp", staleTs);
+
+    const footer = buildMetadataFooter(stmts, ["research"]);
+
+    expect(footer).toContain("**Warning: stale data**");
+    expect(footer).toContain("research");
+  });
+
+  it("model and research not grouped with doc sources", () => {
+    const docTs = "2026-03-05T10:00:00Z";
+    const modelTs = "2026-03-05T14:00:00Z";
+    const researchTs = "2026-03-05T15:00:00Z";
+    setMetadata(stmts, "last_crawl_timestamp", docTs);
+    setMetadata(stmts, "last_model_crawl_timestamp", modelTs);
+    setMetadata(stmts, "last_research_crawl_timestamp", researchTs);
+
+    const footer = buildMetadataFooter(stmts, ["platform", "model", "research"]);
+
+    // Three separate entries
+    expect(footer).toContain(`platform: last crawled ${docTs}`);
+    expect(footer).toContain(`model: last crawled ${modelTs}`);
+    expect(footer).toContain(`research: last crawled ${researchTs}`);
   });
 
   it("multiple stale sources listed together in warning", () => {
