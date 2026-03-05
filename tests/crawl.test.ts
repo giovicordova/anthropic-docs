@@ -629,6 +629,10 @@ describe("modelSource", () => {
 // --- researchSource tests ---
 
 describe("researchSource", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("has correct metadata keys and usesGeneration=false", () => {
     expect(researchSource.name).toBe("research");
     expect(researchSource.staleDays).toBe(RESEARCH_STALE_DAYS);

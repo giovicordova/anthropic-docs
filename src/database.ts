@@ -287,6 +287,13 @@ export function getIndexedBlogUrlsWithTimestamps(db: Database.Database): Map<str
   return new Map(rows.map((r) => [r.url, r.crawled_at]));
 }
 
+export function getIndexedUrlsWithTimestamps(db: Database.Database, source: string): Map<string, string> {
+  const rows = db.prepare(
+    "SELECT DISTINCT url, MIN(crawled_at) as crawled_at FROM pages WHERE source = ? GROUP BY url"
+  ).all(source) as { url: string; crawled_at: string }[];
+  return new Map(rows.map((r) => [r.url, r.crawled_at]));
+}
+
 export function retagResearchPages(db: Database.Database): number {
   const result = db.prepare("UPDATE pages SET source = 'research' WHERE source = 'blog' AND path LIKE '/research/%'").run();
   return result.changes;

@@ -137,11 +137,51 @@ export async function fetchSitemapEntries(): Promise<SitemapEntry[]> {
   }
 }
 
+export async function fetchSitemapEntriesForPrefix(prefix: string): Promise<SitemapEntry[]> {
+  try {
+    const response = await fetchWithTimeout(BLOG_SITEMAP_URL);
+    if (!response.ok) {
+      console.error(`[blog-parser] Sitemap fetch failed: HTTP ${response.status}`);
+      return [];
+    }
+    const xml = await response.text();
+    const entries: SitemapEntry[] = [];
+    const urlBlockRegex = /<url>\s*([\s\S]*?)\s*<\/url>/g;
+    let block: RegExpExecArray | null;
+
+    while ((block = urlBlockRegex.exec(xml)) !== null) {
+      const locMatch = block[1].match(/<loc>\s*(.*?)\s*<\/loc>/);
+      if (!locMatch) continue;
+
+      const url = locMatch[1];
+      try {
+        const pathname = new URL(url).pathname;
+        if (!pathname.startsWith(prefix)) continue;
+      } catch {
+        continue;
+      }
+
+      const lastmodMatch = block[1].match(/<lastmod>\s*(.*?)\s*<\/lastmod>/);
+      entries.push({
+        url,
+        lastmod: lastmodMatch ? lastmodMatch[1] : null,
+      });
+    }
+
+    console.error(`[blog-parser] Sitemap: found ${entries.length} URLs for prefix ${prefix}`);
+    return entries;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[blog-parser] Sitemap fetch error: ${message}`);
+    return [];
+  }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function fetchBlogPages(urls: string[]): Promise<ParsedPage[]> {
+export async function fetchBlogPages(urls: string[], source?: DocSource): Promise<ParsedPage[]> {
   if (urls.length > MAX_BLOG_PAGES) {
     console.error(`[blog-parser] Warning: ${urls.length} URLs exceeds cap of ${MAX_BLOG_PAGES}. Truncating.`);
     urls = urls.slice(0, MAX_BLOG_PAGES);
@@ -160,7 +200,7 @@ export async function fetchBlogPages(urls: string[]): Promise<ParsedPage[]> {
         const response = await fetchWithTimeout(url);
         if (!response.ok) return null;
         const html = await response.text();
-        return parseBlogPage(url, html);
+        return source ? parseHtmlPage(url, html, source) : parseBlogPage(url, html);
       })
     );
 

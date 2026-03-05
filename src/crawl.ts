@@ -7,13 +7,25 @@ import {
   getMetadata,
   setMetadata,
   getIndexedBlogUrlsWithTimestamps,
+  getIndexedUrlsWithTimestamps,
   deleteBlogPages,
+  deletePagesBySource,
   prepareStatements,
 } from "./database.js";
 import { pagesToSections, fetchAndParse } from "./parser.js";
 import type { FetchAndParseOptions } from "./parser.js";
-import { fetchSitemapEntries, fetchBlogPages } from "./blog-parser.js";
-import { STALE_DAYS, BLOG_STALE_DAYS, MIN_PAGE_RATIO } from "./config.js";
+import { fetchSitemapEntries, fetchSitemapEntriesForPrefix, fetchBlogPages, parseHtmlPage } from "./blog-parser.js";
+import { fetchWithTimeout } from "./fetch.js";
+import {
+  STALE_DAYS,
+  BLOG_STALE_DAYS,
+  MODEL_STALE_DAYS,
+  MODEL_PAGE_URLS,
+  RESEARCH_STALE_DAYS,
+  RESEARCH_PATH_PREFIX,
+  MAX_RESEARCH_PAGES,
+  MIN_PAGE_RATIO,
+} from "./config.js";
 
 // --- ContentSource implementations ---
 
@@ -122,6 +134,106 @@ export const blogSource: ContentSource = {
     if (urlsToFetch.length === 0) return [];
 
     return fetchBlogPages(urlsToFetch);
+  },
+};
+
+export const modelSource: ContentSource = {
+  name: "model",
+  staleDays: MODEL_STALE_DAYS,
+  metaTimestampKey: "last_model_crawl_timestamp",
+  metaCountKey: "model_page_count",
+  usesGeneration: false,
+  async fetch(_db) {
+    const pages: ParsedPage[] = [];
+    for (const url of MODEL_PAGE_URLS) {
+      try {
+        const response = await fetchWithTimeout(url);
+        if (!response.ok) continue;
+        const html = await response.text();
+        const page = parseHtmlPage(url, html, "model");
+        if (page) pages.push(page);
+      } catch (err) {
+        console.error(`[model] Failed to fetch ${url}: ${(err as Error).message}`);
+      }
+    }
+    return pages;
+  },
+};
+
+export const researchSource: ContentSource = {
+  name: "research",
+  staleDays: RESEARCH_STALE_DAYS,
+  metaTimestampKey: "last_research_crawl_timestamp",
+  metaCountKey: "research_page_count",
+  usesGeneration: false,
+  async fetch(db) {
+    // 1. Fetch sitemap entries filtered by research prefix
+    const sitemapEntries = await fetchSitemapEntriesForPrefix(RESEARCH_PATH_PREFIX);
+    if (sitemapEntries.length === 0) return [];
+
+    // 2. Get indexed research URLs with crawled_at timestamps
+    const indexedMap = getIndexedUrlsWithTimestamps(db, "research");
+    const sitemapUrlSet = new Set(sitemapEntries.map((e) => e.url));
+
+    // 3. Categorize each sitemap entry
+    const newUrls: string[] = [];
+    const updatedUrls: string[] = [];
+    let unchangedCount = 0;
+
+    for (const entry of sitemapEntries) {
+      const crawledAt = indexedMap.get(entry.url);
+      if (!crawledAt) {
+        newUrls.push(entry.url);
+      } else if (entry.lastmod && entry.lastmod > crawledAt) {
+        updatedUrls.push(entry.url);
+      } else {
+        unchangedCount++;
+      }
+    }
+
+    // 4. Detect DELETED: in index but not in sitemap
+    const deletedUrls: string[] = [];
+    for (const url of indexedMap.keys()) {
+      if (!sitemapUrlSet.has(url)) {
+        deletedUrls.push(url);
+      }
+    }
+
+    // 5. Safety check: skip deletions if sitemap appears incomplete
+    if (deletedUrls.length > 0) {
+      if (sitemapEntries.length < indexedMap.size * MIN_PAGE_RATIO) {
+        console.error(
+          `[research] Safety: sitemap has ${sitemapEntries.length} entries vs ${indexedMap.size} indexed. Skipping ${deletedUrls.length} deletions.`
+        );
+        deletedUrls.length = 0;
+      }
+    }
+
+    // 6. Delete removed research pages
+    if (deletedUrls.length > 0) {
+      deletePagesBySource(db, "research", deletedUrls);
+      console.error(`[research] Deleted ${deletedUrls.length} removed research pages.`);
+    }
+
+    // 7. Delete old rows for updated pages (will be re-inserted)
+    if (updatedUrls.length > 0) {
+      deletePagesBySource(db, "research", updatedUrls);
+    }
+
+    console.error(
+      `[research] Diff: ${newUrls.length} new, ${updatedUrls.length} updated, ${deletedUrls.length} deleted, ${unchangedCount} unchanged.`
+    );
+
+    // 8. Fetch new + updated URLs (capped)
+    let urlsToFetch = [...newUrls, ...updatedUrls];
+    if (urlsToFetch.length === 0) return [];
+
+    if (urlsToFetch.length > MAX_RESEARCH_PAGES) {
+      console.error(`[research] Warning: ${urlsToFetch.length} URLs exceeds cap of ${MAX_RESEARCH_PAGES}. Truncating.`);
+      urlsToFetch = urlsToFetch.slice(0, MAX_RESEARCH_PAGES);
+    }
+
+    return fetchBlogPages(urlsToFetch, "research");
   },
 };
 

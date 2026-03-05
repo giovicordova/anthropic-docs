@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
-import { STALE_HOURS, BLOG_STALE_HOURS } from "../config.js";
+import { STALE_HOURS, BLOG_STALE_HOURS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../config.js";
 
 /** Minimal interface for status text building (testable without full CrawlManager) */
 export interface StatusCrawlInfo {
@@ -15,6 +15,10 @@ export function buildStatusText(stmts: Statements, crawl: StatusCrawlInfo): stri
   const pageCount = getMetadata(stmts, "page_count") || "0";
   const blogPageCount = getMetadata(stmts, "blog_page_count") || "0";
   const lastBlogCrawl = getMetadata(stmts, "last_blog_crawl_timestamp");
+  const modelPageCount = getMetadata(stmts, "model_page_count") || "0";
+  const lastModelCrawl = getMetadata(stmts, "last_model_crawl_timestamp");
+  const researchPageCount = getMetadata(stmts, "research_page_count") || "0";
+  const lastResearchCrawl = getMetadata(stmts, "last_research_crawl_timestamp");
 
   let ageDays = "unknown";
   if (lastCrawl) {
@@ -33,6 +37,14 @@ export function buildStatusText(stmts: Statements, crawl: StatusCrawlInfo): stri
     `- Last blog crawl: ${lastBlogCrawl || "never"}`,
     `- Blog crawl state: ${crawl.getState("blog")}`,
     `- Blog stale threshold: ${BLOG_STALE_HOURS} hour(s)`,
+    `- Model pages indexed: ${modelPageCount}`,
+    `- Last model crawl: ${lastModelCrawl || "never"}`,
+    `- Model crawl state: ${crawl.getState("model")}`,
+    `- Model stale threshold: ${MODEL_STALE_HOURS} hour(s)`,
+    `- Research papers indexed: ${researchPageCount}`,
+    `- Last research crawl: ${lastResearchCrawl || "never"}`,
+    `- Research crawl state: ${crawl.getState("research")}`,
+    `- Research stale threshold: ${RESEARCH_STALE_HOURS} hour(s)`,
   ];
 
   const docsError = crawl.getLastError("docs");
@@ -43,6 +55,16 @@ export function buildStatusText(stmts: Statements, crawl: StatusCrawlInfo): stri
   const blogError = crawl.getLastError("blog");
   if (blogError) {
     lines.push(`- Last blog failure: ${blogError.message} at ${blogError.timestamp}`);
+  }
+
+  const modelError = crawl.getLastError("model");
+  if (modelError) {
+    lines.push(`- Last model failure: ${modelError.message} at ${modelError.timestamp}`);
+  }
+
+  const researchError = crawl.getLastError("research");
+  if (researchError) {
+    lines.push(`- Last research failure: ${researchError.message} at ${researchError.timestamp}`);
   }
 
   return lines.join("\n");

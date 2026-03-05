@@ -5,8 +5,9 @@ import {
   initDatabase,
   prepareStatements,
   cleanupOrphanedGenerations,
+  retagResearchPages,
 } from "./database.js";
-import { CrawlManager, docSource, blogSource } from "./crawl.js";
+import { CrawlManager, docSource, blogSource, modelSource, researchSource } from "./crawl.js";
 import { registerTools } from "./tools/index.js";
 import { POLL_INTERVAL_MS } from "./config.js";
 
@@ -19,7 +20,12 @@ if (orphans > 0) {
   console.error(`[server] Cleaned up ${orphans} orphaned rows from failed crawl.`);
 }
 
-const crawl = new CrawlManager(db, stmts, [docSource, blogSource]);
+const retagged = retagResearchPages(db);
+if (retagged > 0) {
+  console.error(`[server] Re-tagged ${retagged} research pages from blog source.`);
+}
+
+const crawl = new CrawlManager(db, stmts, [docSource, blogSource, modelSource, researchSource]);
 registerTools(server, stmts, crawl);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
