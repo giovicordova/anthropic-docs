@@ -63,7 +63,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md -- Conditional fetch, content hash, and background polling (FRSH-01, FRSH-02)
-- [ ] 03-02-PLAN.md -- Blog update/deletion detection via full sitemap diff (FRSH-03)
+- [x] 03-02-PLAN.md -- Blog update/deletion detection via full sitemap diff (FRSH-03)
 
 ### Phase 4: Content Expansion
 **Goal**: Claude Code can search model/product information and research papers alongside existing docs and blog
@@ -73,10 +73,11 @@ Plans:
   1. Searching for "claude opus" or "claude sonnet" returns indexed model/product page content (not just blog mentions)
   2. Research papers from anthropic.com/research are indexed and searchable
   3. New content sources appear correctly in source-filtered searches and index_status output
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md -- Foundation: extend types, extract parseHtmlPage, fix hardcoded exclusions, update blog prefixes (CONT-01, CONT-02)
+- [ ] 04-02-PLAN.md -- Implement modelSource and researchSource, register in server, update status (CONT-01, CONT-02)
 
 ## Progress
 
@@ -88,4 +89,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 2/2 | Complete   | 2026-03-05 |
 | 3. Freshness | 2/2 | Complete   | 2026-03-05 |
-| 4. Content Expansion | 0/? | Not started | - |
+| 4. Content Expansion | 0/2 | Not started | - |
