@@ -2,7 +2,7 @@ import path from "node:path";
 import os from "node:os";
 
 export const STALE_DAYS = 1;
-export const CONCURRENCY = 5;
+export const CONCURRENCY = 10;
 export const FETCH_TIMEOUT_MS = 15_000;
 export const MAX_SECTION_SIZE = 6_000;
 export const MIN_SECTION_SIZE = 50;
