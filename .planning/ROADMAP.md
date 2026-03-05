@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. All 5 MCP tools return identical results before and after the refactor (no behavior change)
   4. Test suite covers tool handler state transitions, network error handling, and blog-exclusion during orphan cleanup
   5. npm test passes with no failures
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Write safety tests before refactor (TEST-01, TEST-02, TEST-03)
+- [ ] 01-02-PLAN.md -- Decompose index.ts into modules (ARCH-01, ARCH-02, ARCH-03, ARCH-04)
 
 ### Phase 2: Trust Signals
 **Goal**: Users can see how fresh the index is, get warned about stale data, and the server handles failures and shutdowns gracefully
@@ -84,7 +84,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Architecture and Safety | 0/? | Not started | - |
+| 1. Architecture and Safety | 0/2 | Planning complete | - |
 | 2. Trust Signals | 0/? | Not started | - |
 | 3. Freshness | 0/? | Not started | - |
 | 4. Content Expansion | 0/? | Not started | - |
