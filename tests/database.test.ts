@@ -120,6 +120,21 @@ describe("database", () => {
     expect(removed).toBeGreaterThan(0);
   });
 
+  it("searches with blog source filter", () => {
+    insertPageSections(db, stmts, [makeSection({
+      path: "/news/test-post",
+      url: "https://www.anthropic.com/news/test-post",
+      title: "Test Blog Post",
+      source: "blog",
+      content: "Blog content about new model capabilities and features released today.",
+    })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const results = searchDocs(stmts, "model capabilities", 10, "blog");
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe("Test Blog Post");
+  });
+
   it("stores and retrieves metadata", () => {
     setMetadata(stmts, "test_key", "test_value");
     expect(getMetadata(stmts, "test_key")).toBe("test_value");

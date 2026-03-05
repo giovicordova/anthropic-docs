@@ -10,3 +10,8 @@ export const PLATFORM_DOCS_URL = "https://platform.claude.com/llms-full.txt";
 export const CLAUDE_CODE_DOCS_URL = "https://code.claude.com/docs/llms-full.txt";
 
 export const DB_DIR = path.join(os.homedir(), ".claude", "mcp-data", "anthropic-docs");
+
+export const BLOG_SITEMAP_URL = "https://www.anthropic.com/sitemap.xml";
+export const BLOG_CONCURRENCY = 10;
+export const BLOG_STALE_DAYS = 7;
+export const BLOG_PATH_PREFIXES = ["/news/", "/research/", "/engineering/"];

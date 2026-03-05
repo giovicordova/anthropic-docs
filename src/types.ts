@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 
 // --- Source tagging ---
 
-export type DocSource = "platform" | "code" | "api-reference";
+export type DocSource = "platform" | "code" | "api-reference" | "blog";
 
 // --- Parser output ---
 
