@@ -62,7 +62,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Conditional fetch, content hash, and background polling (FRSH-01, FRSH-02)
+- [x] 03-01-PLAN.md -- Conditional fetch, content hash, and background polling (FRSH-01, FRSH-02)
 - [ ] 03-02-PLAN.md -- Blog update/deletion detection via full sitemap diff (FRSH-03)
 
 ### Phase 4: Content Expansion
@@ -87,5 +87,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 2/2 | Complete   | 2026-03-05 |
-| 3. Freshness | 0/2 | Not started | - |
+| 3. Freshness | 1/2 | In progress | - |
 | 4. Content Expansion | 0/? | Not started | - |
