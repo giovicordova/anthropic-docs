@@ -16,9 +16,9 @@
 
 - [ ] **TRST-01**: Search results include last crawl timestamp per source
 - [ ] **TRST-02**: Search results warn when index data exceeds staleness threshold
-- [ ] **TRST-03**: index_status tool shows crawl failure reason and timestamp
-- [ ] **TRST-04**: Graceful shutdown on SIGTERM/SIGINT (clean timer teardown, DB close)
-- [ ] **TRST-05**: Minimum page count threshold before accepting a crawl result (prevents partial failure from wiping index)
+- [x] **TRST-03**: index_status tool shows crawl failure reason and timestamp
+- [x] **TRST-04**: Graceful shutdown on SIGTERM/SIGINT (clean timer teardown, DB close)
+- [x] **TRST-05**: Minimum page count threshold before accepting a crawl result (prevents partial failure from wiping index)
 
 ### Testing
 
@@ -74,9 +74,9 @@
 | ARCH-04 | Phase 1 | Complete |
 | TRST-01 | Phase 2 | Pending |
 | TRST-02 | Phase 2 | Pending |
-| TRST-03 | Phase 2 | Pending |
-| TRST-04 | Phase 2 | Pending |
-| TRST-05 | Phase 2 | Pending |
+| TRST-03 | Phase 2 | Complete |
+| TRST-04 | Phase 2 | Complete |
+| TRST-05 | Phase 2 | Complete |
 | TEST-01 | Phase 1 | Complete |
 | TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 1 | Complete |

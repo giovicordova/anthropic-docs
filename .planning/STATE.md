@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 01-02-PLAN.md (Phase 1 complete)
-last_updated: "2026-03-05T15:24:26.172Z"
-last_activity: 2026-03-05 -- Completed 01-02 architecture decomposition
+status: in-progress
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-05T15:50:09Z"
+last_activity: 2026-03-05 -- Completed 02-01 trust infrastructure
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Claude Code always has access to current, accurate Anthropic facts
-**Current focus:** Phase 1 - Architecture and Safety
+**Current focus:** Phase 2 - Trust Signals
 
 ## Current Position
 
-Phase: 1 of 4 (Architecture and Safety) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-03-05 -- Completed 01-02 architecture decomposition
+Phase: 2 of 4 (Trust Signals)
+Plan: 1 of 2 in current phase (complete)
+Status: In Progress
+Last activity: 2026-03-05 -- Completed 02-01 trust infrastructure
 
-Progress: [██████████] 100% (Phase 1)
+Progress: [████████░░] 75% (3/4 plans)
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100% (Phase 1)
 *Updated after each plan completion*
 | Phase 01 P01 | 4min | 2 tasks | 4 files |
 | Phase 01 P02 | 4min | 2 tasks | 9 files |
+| Phase 02 P01 | 3min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - [Phase 01]: ContentSource.fetch receives db param so blogSource can call getIndexedBlogUrls for sitemap-diff
 - [Phase 01]: Non-generation sources query total count from DB after insert (simpler than in-memory tracking)
 - [Phase 01]: checkAndCrawlAll triggers crawlAll on first stale source (sequential all-or-nothing)
+- [Phase 02]: Threshold check inside usesGeneration branch -- blog source automatically excluded
+- [Phase 02]: Error tracking uses Map not new type -- keeps types.ts minimal
+- [Phase 02]: Shutdown handler after main() call -- ensures server and db exist
 
 ### Pending Todos
 
@@ -79,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T15:19:30Z
-Stopped at: Completed 01-02-PLAN.md (Phase 1 complete)
+Last session: 2026-03-05T15:50:09Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
