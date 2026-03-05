@@ -12,12 +12,14 @@ function createShutdownHandler(deps: {
   server: { close: () => Promise<void> };
   db: { close: () => void };
   exit: (code: number) => void;
+  pollTimer?: ReturnType<typeof setInterval> | null;
 }) {
   let shuttingDown = false;
 
   return function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (deps.pollTimer) clearInterval(deps.pollTimer);
     deps.server.close().catch(() => {});
     deps.db.close();
     deps.exit(0);
@@ -59,5 +61,46 @@ describe("shutdown", () => {
 
     expect(dbClose).toHaveBeenCalledOnce();
     expect(exit).toHaveBeenCalledOnce();
+  });
+
+  it("clears poll timer during shutdown", () => {
+    const dbClose = vi.fn();
+    const serverClose = vi.fn().mockResolvedValue(undefined);
+    const exit = vi.fn();
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+
+    // Create a real timer to pass in
+    const timer = setInterval(() => {}, 999999);
+
+    const shutdown = createShutdownHandler({
+      server: { close: serverClose },
+      db: { close: dbClose },
+      exit,
+      pollTimer: timer,
+    });
+
+    shutdown();
+
+    expect(clearIntervalSpy).toHaveBeenCalledWith(timer);
+    clearIntervalSpy.mockRestore();
+    clearInterval(timer); // cleanup
+  });
+
+  it("handles null poll timer gracefully during shutdown", () => {
+    const dbClose = vi.fn();
+    const serverClose = vi.fn().mockResolvedValue(undefined);
+    const exit = vi.fn();
+
+    const shutdown = createShutdownHandler({
+      server: { close: serverClose },
+      db: { close: dbClose },
+      exit,
+      pollTimer: null,
+    });
+
+    // Should not throw
+    expect(() => shutdown()).not.toThrow();
+    expect(dbClose).toHaveBeenCalledOnce();
+    expect(exit).toHaveBeenCalledWith(0);
   });
 });

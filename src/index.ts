@@ -8,6 +8,7 @@ import {
 } from "./database.js";
 import { CrawlManager, docSource, blogSource } from "./crawl.js";
 import { registerTools } from "./tools/index.js";
+import { POLL_INTERVAL_MS } from "./config.js";
 
 const server = new McpServer({ name: "anthropic-docs", version: "2.0.0" });
 const db = initDatabase();
@@ -21,11 +22,19 @@ if (orphans > 0) {
 const crawl = new CrawlManager(db, stmts, [docSource, blogSource]);
 registerTools(server, stmts, crawl);
 
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
 async function main() {
   crawl.checkAndCrawlAll();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[server] Anthropic Docs MCP server v2 running on stdio");
+
+  pollTimer = setInterval(() => {
+    console.error("[server] Scheduled poll triggered.");
+    crawl.checkAndCrawlAll();
+  }, POLL_INTERVAL_MS);
+  pollTimer.unref();
 }
 
 main().catch((err) => {
@@ -38,6 +47,7 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.error("[server] Shutting down gracefully...");
+  if (pollTimer) clearInterval(pollTimer);
   server.close().catch(() => {});
   db.close();
   process.exit(0);
