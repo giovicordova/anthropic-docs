@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   initDatabase,
   prepareStatements,
+  cleanupOrphanedGenerations,
   searchDocs,
   getDocPage,
   listSections,
@@ -20,6 +21,11 @@ const server = new McpServer({
 
 const db = initDatabase();
 const stmts = prepareStatements(db);
+
+const orphansRemoved = cleanupOrphanedGenerations(db, stmts);
+if (orphansRemoved > 0) {
+  console.error(`[server] Cleaned up ${orphansRemoved} orphaned rows from failed crawl.`);
+}
 
 // --- Crawl state management ---
 type CrawlState = "idle" | "crawling" | "failed";

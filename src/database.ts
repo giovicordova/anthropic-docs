@@ -232,6 +232,15 @@ export function finalizeGeneration(db: Database.Database, stmts: Statements, kee
   finalize();
 }
 
+export function cleanupOrphanedGenerations(db: Database.Database, stmts: Statements): number {
+  const currentGen = getCurrentGeneration(stmts);
+  const result = db.prepare("DELETE FROM pages WHERE generation != ?").run(currentGen);
+  if (result.changes > 0) {
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+  }
+  return result.changes;
+}
+
 function preprocessQuery(query: string): string {
   let cleaned = query
     .replace(/[*"():^~{}[\]]/g, " ")
