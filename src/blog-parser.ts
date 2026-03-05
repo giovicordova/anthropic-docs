@@ -6,7 +6,7 @@ import {
   MAX_BLOG_PAGES,
 } from "./config.js";
 import { fetchWithTimeout } from "./fetch.js";
-import type { ParsedPage } from "./types.js";
+import type { ParsedPage, SitemapEntry } from "./types.js";
 
 // --- Pure functions (exported for testing) ---
 
@@ -28,6 +28,33 @@ export function parseSitemap(xml: string): string[] {
   }
 
   return urls;
+}
+
+export function parseSitemapWithLastmod(xml: string): SitemapEntry[] {
+  const entries: SitemapEntry[] = [];
+  const urlBlockRegex = /<url>\s*([\s\S]*?)\s*<\/url>/g;
+  let block: RegExpExecArray | null;
+
+  while ((block = urlBlockRegex.exec(xml)) !== null) {
+    const locMatch = block[1].match(/<loc>\s*(.*?)\s*<\/loc>/);
+    if (!locMatch) continue;
+
+    const url = locMatch[1];
+    try {
+      const pathname = new URL(url).pathname;
+      if (!BLOG_PATH_PREFIXES.some((p) => pathname.startsWith(p))) continue;
+    } catch {
+      continue;
+    }
+
+    const lastmodMatch = block[1].match(/<lastmod>\s*(.*?)\s*<\/lastmod>/);
+    entries.push({
+      url,
+      lastmod: lastmodMatch ? lastmodMatch[1] : null,
+    });
+  }
+
+  return entries;
 }
 
 const nhm = new NodeHtmlMarkdown();
@@ -81,6 +108,24 @@ export async function fetchSitemapUrls(): Promise<string[]> {
     const urls = parseSitemap(xml);
     console.error(`[blog-parser] Sitemap: found ${urls.length} blog URLs`);
     return urls;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[blog-parser] Sitemap fetch error: ${message}`);
+    return [];
+  }
+}
+
+export async function fetchSitemapEntries(): Promise<SitemapEntry[]> {
+  try {
+    const response = await fetchWithTimeout(BLOG_SITEMAP_URL);
+    if (!response.ok) {
+      console.error(`[blog-parser] Sitemap fetch failed: HTTP ${response.status}`);
+      return [];
+    }
+    const xml = await response.text();
+    const entries = parseSitemapWithLastmod(xml);
+    console.error(`[blog-parser] Sitemap: found ${entries.length} blog URLs`);
+    return entries;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[blog-parser] Sitemap fetch error: ${message}`);

@@ -279,3 +279,23 @@ export function getIndexedBlogUrls(db: Database.Database): string[] {
   const rows = db.prepare("SELECT DISTINCT url FROM pages WHERE source = 'blog'").all() as { url: string }[];
   return rows.map((r) => r.url);
 }
+
+export function getIndexedBlogUrlsWithTimestamps(db: Database.Database): Map<string, string> {
+  const rows = db.prepare(
+    "SELECT DISTINCT url, MIN(crawled_at) as crawled_at FROM pages WHERE source = 'blog' GROUP BY url"
+  ).all() as { url: string; crawled_at: string }[];
+  return new Map(rows.map((r) => [r.url, r.crawled_at]));
+}
+
+export function deleteBlogPages(db: Database.Database, urls: string[]): number {
+  if (urls.length === 0) return 0;
+  let deleted = 0;
+  for (const url of urls) {
+    const result = db.prepare("DELETE FROM pages WHERE url = ? AND source = 'blog'").run(url);
+    deleted += result.changes;
+  }
+  if (deleted > 0) {
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+  }
+  return deleted;
+}
