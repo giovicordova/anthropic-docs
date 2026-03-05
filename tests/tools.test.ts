@@ -8,10 +8,13 @@ import {
   getDocPage,
   listSections,
   getMetadata,
+  setMetadata,
 } from "../src/database.js";
 import type { PageSection, SearchResult, GetDocPageResult, SectionRow } from "../src/types.js";
 import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
+import { STALE_DAYS, BLOG_STALE_DAYS } from "../src/config.js";
+import { buildMetadataFooter } from "../src/tools/search.js";
 
 /**
  * Tool response format tests.
@@ -352,5 +355,88 @@ describe("tool response format: list_doc_sections", () => {
     expect(formatted).toContain("[Messages API]");
     expect(formatted).toContain("[MCP Integration]");
     expect(formatted).toContain("[Claude Release]");
+  });
+});
+
+describe("staleness metadata", () => {
+  let db: Database.Database;
+  let stmts: Statements;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("search results include per-source crawl timestamp footer", () => {
+    const docTs = "2026-03-05T10:00:00Z";
+    const blogTs = "2026-03-04T10:00:00Z";
+    setMetadata(stmts, "last_crawl_timestamp", docTs);
+    setMetadata(stmts, "last_blog_crawl_timestamp", blogTs);
+
+    const sources = ["platform", "blog"];
+    const footer = buildMetadataFooter(stmts, sources);
+
+    expect(footer).toContain("---");
+    expect(footer).toContain(`platform: last crawled ${docTs}`);
+    expect(footer).toContain(`blog: last crawled ${blogTs}`);
+  });
+
+  it("search results include stale warning when source exceeds threshold", () => {
+    // Set doc timestamp older than STALE_DAYS (1 day)
+    const staleTs = new Date(Date.now() - (STALE_DAYS + 1) * 86400000).toISOString();
+    setMetadata(stmts, "last_crawl_timestamp", staleTs);
+
+    const footer = buildMetadataFooter(stmts, ["platform"]);
+
+    expect(footer).toContain("**Warning: stale data**");
+    expect(footer).toContain("platform");
+    expect(footer).toContain("refresh_index");
+  });
+
+  it("no warning when all sources are fresh", () => {
+    const freshTs = new Date().toISOString();
+    setMetadata(stmts, "last_crawl_timestamp", freshTs);
+    setMetadata(stmts, "last_blog_crawl_timestamp", freshTs);
+
+    const footer = buildMetadataFooter(stmts, ["platform", "blog"]);
+
+    expect(footer).not.toContain("Warning");
+    expect(footer).toContain("---");
+  });
+
+  it("footer appears even on no-results response", () => {
+    const freshTs = new Date().toISOString();
+    setMetadata(stmts, "last_crawl_timestamp", freshTs);
+    setMetadata(stmts, "last_blog_crawl_timestamp", freshTs);
+
+    // Simulate no-results: all sources
+    const footer = buildMetadataFooter(stmts, ["platform", "code", "api-reference", "blog"]);
+
+    expect(footer).toContain("---");
+    expect(footer).toContain("last crawled");
+  });
+
+  it("groups non-blog sources under shared doc timestamp", () => {
+    const docTs = "2026-03-05T10:00:00Z";
+    setMetadata(stmts, "last_crawl_timestamp", docTs);
+
+    const footer = buildMetadataFooter(stmts, ["platform", "code", "api-reference"]);
+
+    // All three should appear together with one timestamp
+    expect(footer).toContain("platform, code, api-reference: last crawled");
+    expect(footer).toContain(docTs);
+  });
+
+  it("multiple stale sources listed together in warning", () => {
+    const staleDocTs = new Date(Date.now() - (STALE_DAYS + 1) * 86400000).toISOString();
+    const staleBlogTs = new Date(Date.now() - (BLOG_STALE_DAYS + 1) * 86400000).toISOString();
+    setMetadata(stmts, "last_crawl_timestamp", staleDocTs);
+    setMetadata(stmts, "last_blog_crawl_timestamp", staleBlogTs);
+
+    const footer = buildMetadataFooter(stmts, ["platform", "blog"]);
+
+    expect(footer).toContain("**Warning: stale data**");
+    expect(footer).toContain("platform");
+    expect(footer).toContain("blog");
   });
 });
