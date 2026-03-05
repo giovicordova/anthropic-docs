@@ -16,7 +16,7 @@ export function registerListSectionsTool(
         "List all indexed documentation pages with their paths, grouped by source. Use this to discover what documentation is available or find the correct path for get_doc_page.",
       inputSchema: {
         source: z
-          .enum(["all", "platform", "code", "api-reference", "blog"])
+          .enum(["all", "platform", "code", "api-reference", "blog", "model", "research"])
           .default("all")
           .describe("Filter by source: 'platform', 'code', 'api-reference', 'blog', or 'all' (default)."),
       },
@@ -83,6 +83,26 @@ export function registerListSectionsTool(
       if (blogPages.length > 0) {
         output += `## Anthropic Blog (${blogPages.length} posts)\n\n`;
         for (const p of blogPages) {
+          output += `- [${p.title}](${p.path})\n`;
+        }
+        output += "\n";
+      }
+
+      const modelPages = sections.filter((s) => s.source === "model");
+
+      if (modelPages.length > 0) {
+        output += `## Model Pages (${modelPages.length} pages)\n\n`;
+        for (const p of modelPages) {
+          output += `- [${p.title}](${p.path})\n`;
+        }
+        output += "\n";
+      }
+
+      const researchPages = sections.filter((s) => s.source === "research");
+
+      if (researchPages.length > 0) {
+        output += `## Research Papers (${researchPages.length} papers)\n\n`;
+        for (const p of researchPages) {
           output += `- [${p.title}](${p.path})\n`;
         }
         output += "\n";

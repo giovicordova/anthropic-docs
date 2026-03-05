@@ -105,6 +105,24 @@ function formatListSections(sections: SectionRow[]): string {
     output += "\n";
   }
 
+  const modelPages = sections.filter((s) => s.source === "model");
+  if (modelPages.length > 0) {
+    output += `## Model Pages (${modelPages.length} pages)\n\n`;
+    for (const p of modelPages) {
+      output += `- [${p.title}](${p.path})\n`;
+    }
+    output += "\n";
+  }
+
+  const researchPages = sections.filter((s) => s.source === "research");
+  if (researchPages.length > 0) {
+    output += `## Research Papers (${researchPages.length} papers)\n\n`;
+    for (const p of researchPages) {
+      output += `- [${p.title}](${p.path})\n`;
+    }
+    output += "\n";
+  }
+
   return output;
 }
 
@@ -285,6 +303,46 @@ describe("tool response format: list_doc_sections", () => {
   beforeEach(() => {
     db = initDatabase(":memory:");
     stmts = prepareStatements(db);
+  });
+
+  it("groups model and research pages in their own sections", () => {
+    insertPageSections(
+      db,
+      stmts,
+      [
+        makeSection({
+          path: "/claude/opus",
+          url: "https://www.anthropic.com/claude/opus",
+          title: "Claude Opus",
+          source: "model",
+        }),
+      ],
+      1
+    );
+    insertPageSections(
+      db,
+      stmts,
+      [
+        makeSection({
+          path: "/research/alignment-faking",
+          url: "https://www.anthropic.com/research/alignment-faking",
+          title: "Alignment Faking",
+          source: "research",
+        }),
+      ],
+      1
+    );
+    finalizeGeneration(db, stmts, 1);
+
+    const sections = listSections(stmts);
+    expect(sections).toHaveLength(2);
+
+    const formatted = formatListSections(sections);
+
+    expect(formatted).toContain("## Model Pages (1 pages)");
+    expect(formatted).toContain("[Claude Opus]");
+    expect(formatted).toContain("## Research Papers (1 papers)");
+    expect(formatted).toContain("[Alignment Faking]");
   });
 
   it("groups pages by source (platform, code, api-reference, blog)", () => {
