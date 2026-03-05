@@ -22,9 +22,9 @@
 
 ### Testing
 
-- [ ] **TEST-01**: Tool handler tests covering crawl state transitions, staleness checks, response formatting
-- [ ] **TEST-02**: Network function tests for fetchAndParse and fetchBlogPages (error handling, timeouts, partial failures)
-- [ ] **TEST-03**: Blog-exclusion test verifying blog rows survive orphan cleanup
+- [x] **TEST-01**: Tool handler tests covering crawl state transitions, staleness checks, response formatting
+- [x] **TEST-02**: Network function tests for fetchAndParse and fetchBlogPages (error handling, timeouts, partial failures)
+- [x] **TEST-03**: Blog-exclusion test verifying blog rows survive orphan cleanup
 
 ### Freshness
 
@@ -77,9 +77,9 @@
 | TRST-03 | Phase 2 | Pending |
 | TRST-04 | Phase 2 | Pending |
 | TRST-05 | Phase 2 | Pending |
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
-| TEST-03 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
+| TEST-03 | Phase 1 | Complete |
 | FRSH-01 | Phase 3 | Pending |
 | FRSH-02 | Phase 3 | Pending |
 | FRSH-03 | Phase 3 | Pending |
