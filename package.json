@@ -1,6 +1,6 @@
 {
   "name": "anthropic-docs-mcp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "MCP server that indexes Anthropic documentation into a searchable SQLite FTS5 database for Claude Code",
   "main": "dist/index.js",
   "bin": {
@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run"
   },
   "keywords": [
     "mcp",
