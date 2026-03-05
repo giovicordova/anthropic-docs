@@ -27,6 +27,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
+    "node-html-markdown": "^2.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
