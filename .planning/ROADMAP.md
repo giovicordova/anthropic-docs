@@ -48,8 +48,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Foundation: types, error tracking, page count threshold, graceful shutdown (TRST-03, TRST-04, TRST-05)
-- [ ] 02-02-PLAN.md -- Surface trust metadata in search and status tools (TRST-01, TRST-02, TRST-03)
+- [x] 02-01-PLAN.md -- Foundation: types, error tracking, page count threshold, graceful shutdown (TRST-03, TRST-04, TRST-05)
+- [x] 02-02-PLAN.md -- Surface trust metadata in search and status tools (TRST-01, TRST-02, TRST-03)
 
 ### Phase 3: Freshness
 **Goal**: Index stays current within hours instead of days, without wasting resources re-parsing unchanged content
@@ -59,10 +59,11 @@ Plans:
   1. Unchanged content is skipped during re-crawl (verified via ETag, Last-Modified, or content hash)
   2. Background polling triggers automatically every 1-2 hours without blocking tool responses
   3. Blog posts that are updated or deleted on anthropic.com are detected and updated/removed from the index
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md -- Conditional fetch, content hash, and background polling (FRSH-01, FRSH-02)
+- [ ] 03-02-PLAN.md -- Blog update/deletion detection via full sitemap diff (FRSH-03)
 
 ### Phase 4: Content Expansion
 **Goal**: Claude Code can search model/product information and research papers alongside existing docs and blog
@@ -86,5 +87,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
 | 2. Trust Signals | 2/2 | Complete   | 2026-03-05 |
-| 3. Freshness | 0/? | Not started | - |
+| 3. Freshness | 0/2 | Not started | - |
 | 4. Content Expansion | 0/? | Not started | - |
