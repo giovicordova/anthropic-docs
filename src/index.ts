@@ -32,3 +32,15 @@ main().catch((err) => {
   console.error("[server] Fatal error:", err);
   process.exit(1);
 });
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error("[server] Shutting down gracefully...");
+  server.close().catch(() => {});
+  db.close();
+  process.exit(0);
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

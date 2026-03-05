@@ -11,7 +11,7 @@ import {
 import { pagesToSections } from "./parser.js";
 import { fetchAndParse } from "./parser.js";
 import { fetchSitemapUrls, fetchBlogPages } from "./blog-parser.js";
-import { STALE_DAYS, BLOG_STALE_DAYS } from "./config.js";
+import { STALE_DAYS, BLOG_STALE_DAYS, MIN_PAGE_RATIO } from "./config.js";
 
 // --- ContentSource implementations ---
 
@@ -49,6 +49,7 @@ export class CrawlManager {
   private stmts: Statements;
   private sources: ContentSource[];
   private states: Map<string, CrawlState> = new Map();
+  private errors: Map<string, { message: string; timestamp: string }> = new Map();
 
   constructor(db: Database.Database, stmts: Statements, sources: ContentSource[]) {
     this.db = db;
@@ -61,6 +62,10 @@ export class CrawlManager {
 
   getState(name: string): CrawlState {
     return this.states.get(name) || "idle";
+  }
+
+  getLastError(name: string): { message: string; timestamp: string } | null {
+    return this.errors.get(name) || null;
   }
 
   isAnyCrawling(): boolean {
@@ -83,6 +88,16 @@ export class CrawlManager {
       if (source.usesGeneration) {
         const currentGen = getCurrentGeneration(this.stmts);
         const newGen = currentGen + 1;
+
+        // Safety threshold: reject crawl if page count dropped drastically
+        const previousCount = parseInt(getMetadata(this.stmts, source.metaCountKey) || "0", 10);
+        if (previousCount > 0 && pages.length < previousCount * MIN_PAGE_RATIO) {
+          const msg = `Crawl rejected: ${pages.length}/${previousCount} pages (below ${MIN_PAGE_RATIO * 100}% safety threshold)`;
+          console.error(`[server] ${source.name}: ${msg}`);
+          this.states.set(source.name, "failed");
+          this.errors.set(source.name, { message: msg, timestamp: new Date().toISOString() });
+          return 0;
+        }
 
         console.error(`[server] Starting ${source.name} crawl (generation ${newGen})...`);
         let totalSections = 0;
@@ -126,6 +141,7 @@ export class CrawlManager {
       this.states.set(source.name, "idle");
       return pages.length;
     } catch (err) {
+      this.errors.set(source.name, { message: (err as Error).message, timestamp: new Date().toISOString() });
       this.states.set(source.name, "failed");
       if (source.usesGeneration) {
         throw err;
