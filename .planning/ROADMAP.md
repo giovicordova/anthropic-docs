@@ -45,11 +45,11 @@ Plans:
   3. index_status tool shows the reason and timestamp of the last crawl failure (if any)
   4. Sending SIGTERM to the server process results in clean timer teardown and DB close (no crash, no leaked handles)
   5. A crawl that returns fewer pages than 50% of the previous crawl is rejected (index preserved)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Foundation: types, error tracking, page count threshold, graceful shutdown (TRST-03, TRST-04, TRST-05)
+- [ ] 02-02-PLAN.md -- Surface trust metadata in search and status tools (TRST-01, TRST-02, TRST-03)
 
 ### Phase 3: Freshness
 **Goal**: Index stays current within hours instead of days, without wasting resources re-parsing unchanged content
@@ -85,6 +85,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Architecture and Safety | 2/2 | Complete | 2026-03-05 |
-| 2. Trust Signals | 0/? | Not started | - |
+| 2. Trust Signals | 0/2 | Not started | - |
 | 3. Freshness | 0/? | Not started | - |
 | 4. Content Expansion | 0/? | Not started | - |
