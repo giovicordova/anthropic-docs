@@ -1,5 +1,5 @@
-import { MAX_SECTION_SIZE, MIN_SECTION_SIZE } from "./config.js";
-import type { Section, ParsedPage, DocSource } from "./types.js";
+import { MAX_SECTION_SIZE, MIN_SECTION_SIZE, PLATFORM_DOCS_URL, CLAUDE_CODE_DOCS_URL, FETCH_TIMEOUT_MS } from "./config.js";
+import type { Section, ParsedPage, DocSource, PageSection } from "./types.js";
 
 export function splitIntoSections(markdown: string): Section[] {
   const lines = markdown.split("\n");
@@ -164,4 +164,63 @@ export function parsePages(text: string, defaultSource: "platform" | "code"): Pa
   }
 
   return pages;
+}
+
+function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, {
+    signal: controller.signal,
+    headers: { "User-Agent": "anthropic-docs-mcp/2.0 (local indexer)" },
+  }).finally(() => clearTimeout(timeout));
+}
+
+export async function fetchAndParse(): Promise<ParsedPage[]> {
+  const results: ParsedPage[] = [];
+
+  const [platformResponse, codeResponse] = await Promise.allSettled([
+    fetchWithTimeout(PLATFORM_DOCS_URL),
+    fetchWithTimeout(CLAUDE_CODE_DOCS_URL),
+  ]);
+
+  if (platformResponse.status === "fulfilled" && platformResponse.value.ok) {
+    const text = await platformResponse.value.text();
+    const pages = parsePages(text, "platform");
+    results.push(...pages);
+    console.error(`[parser] Platform docs: parsed ${pages.length} pages`);
+  } else {
+    const reason = platformResponse.status === "rejected"
+      ? platformResponse.reason?.message
+      : `HTTP ${(platformResponse as PromiseFulfilledResult<Response>).value.status}`;
+    console.error(`[parser] Failed to fetch platform docs: ${reason}`);
+  }
+
+  if (codeResponse.status === "fulfilled" && codeResponse.value.ok) {
+    const text = await codeResponse.value.text();
+    const pages = parsePages(text, "code");
+    results.push(...pages);
+    console.error(`[parser] Claude Code docs: parsed ${pages.length} pages`);
+  } else {
+    const reason = codeResponse.status === "rejected"
+      ? codeResponse.reason?.message
+      : `HTTP ${(codeResponse as PromiseFulfilledResult<Response>).value.status}`;
+    console.error(`[parser] Failed to fetch code docs: ${reason}`);
+  }
+
+  console.error(`[parser] Total: ${results.length} pages`);
+  return results;
+}
+
+export function pagesToSections(page: ParsedPage): PageSection[] {
+  const sections = splitIntoSections(page.content);
+  return sections.map((section) => ({
+    url: page.url,
+    path: page.path,
+    title: page.title,
+    sectionHeading: section.heading,
+    sectionAnchor: section.anchor,
+    content: section.content,
+    sectionOrder: section.order,
+    source: page.source,
+  }));
 }
