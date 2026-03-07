@@ -35,11 +35,6 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
 - **Claude Code docs**: `https://code.claude.com/docs/llms-full.txt` — ~59 pages. Plain markdown.
 - **Anthropic blog**: `https://www.anthropic.com/sitemap.xml` → ~410 posts from /news, /research, /engineering. HTML fetched and converted to markdown. Incremental crawl (only new posts).
 
-## Dependencies
-
-4 runtime: `@modelcontextprotocol/sdk`, `better-sqlite3`, `node-html-markdown`, `zod`
-2 dev: `typescript`, `vitest`
-
 ## Key Conventions
 
 - Conventional commits: `type(scope): description`.
