@@ -9,6 +9,7 @@ import {
   listSections,
   getMetadata,
   setMetadata,
+  getSourceCounts,
 } from "../src/database.js";
 import type { PageSection, SearchResult, GetDocPageResult, SectionRow, SourceCount } from "../src/types.js";
 import type Database from "better-sqlite3";
@@ -58,74 +59,28 @@ function formatPageNotFound(docPath: string): string {
   return `Page not found: "${docPath}". Use search_anthropic_docs to find the correct path, or list_doc_sections to browse available pages.`;
 }
 
-function formatListSections(sections: SectionRow[]): string {
-  const platformPages = sections.filter((s) => s.source === "platform");
-  const codePages = sections.filter((s) => s.source === "code");
-  const apiRefPages = sections.filter((s) => s.source === "api-reference");
-  const blogPages = sections.filter((s) => s.source === "blog");
+function formatSourceSummary(counts: SourceCount[]): string {
+  const labels: Record<string, string> = {
+    platform: "pages", code: "pages", "api-reference": "pages",
+    blog: "posts", model: "pages", research: "papers",
+  };
+  const lines = counts.map((c) => `${c.source}: ${c.count} ${labels[c.source] || "pages"}`);
+  return lines.join("\n") + "\n\nUse source filter to list pages for a specific source.";
+}
 
-  let output = `# Documentation Index\n\n${sections.length} pages indexed.\n\n`;
-
-  if (platformPages.length > 0) {
-    output += `## Anthropic Platform Docs (${platformPages.length} pages)\n\n`;
-    const grouped: Record<string, { path: string; title: string }[]> = {};
-    for (const s of platformPages) {
-      const parts = s.path.split("/").filter(Boolean);
-      const category = parts.length > 2 ? parts[2] : "root";
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push(s);
-    }
-    for (const [category, pages] of Object.entries(grouped).sort()) {
-      output += `### ${category.replace(/-/g, " ")}\n\n`;
-      for (const p of pages) {
-        output += `- [${p.title}](${p.path})\n`;
-      }
-      output += "\n";
-    }
+function formatCompactList(sections: SectionRow[], source: string): string {
+  const labels: Record<string, string> = {
+    platform: "Anthropic Platform Docs",
+    code: "Claude Code Docs",
+    "api-reference": "API Reference",
+    blog: "Anthropic Blog",
+    model: "Model Pages",
+    research: "Research Papers",
+  };
+  let output = `${labels[source] || source} (${sections.length} pages)\n\n`;
+  for (const s of sections) {
+    output += `${s.path} — ${s.title}\n`;
   }
-
-  if (apiRefPages.length > 0) {
-    output += `## API Reference (${apiRefPages.length} pages)\n\n`;
-    for (const p of apiRefPages) {
-      output += `- [${p.title}](${p.path})\n`;
-    }
-    output += "\n";
-  }
-
-  if (codePages.length > 0) {
-    output += `## Claude Code Docs (${codePages.length} pages)\n\n`;
-    for (const p of codePages) {
-      output += `- [${p.title}](${p.path})\n`;
-    }
-    output += "\n";
-  }
-
-  if (blogPages.length > 0) {
-    output += `## Anthropic Blog (${blogPages.length} posts)\n\n`;
-    for (const p of blogPages) {
-      output += `- [${p.title}](${p.path})\n`;
-    }
-    output += "\n";
-  }
-
-  const modelPages = sections.filter((s) => s.source === "model");
-  if (modelPages.length > 0) {
-    output += `## Model Pages (${modelPages.length} pages)\n\n`;
-    for (const p of modelPages) {
-      output += `- [${p.title}](${p.path})\n`;
-    }
-    output += "\n";
-  }
-
-  const researchPages = sections.filter((s) => s.source === "research");
-  if (researchPages.length > 0) {
-    output += `## Research Papers (${researchPages.length} papers)\n\n`;
-    for (const p of researchPages) {
-      output += `- [${p.title}](${p.path})\n`;
-    }
-    output += "\n";
-  }
-
   return output;
 }
 
@@ -310,115 +265,36 @@ describe("tool response format: list_doc_sections", () => {
     stmts = prepareStatements(db);
   });
 
-  it("groups model and research pages in their own sections", () => {
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/claude/opus",
-          url: "https://www.anthropic.com/claude/opus",
-          title: "Claude Opus",
-          source: "model",
-        }),
-      ],
-      1
-    );
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/research/alignment-faking",
-          url: "https://www.anthropic.com/research/alignment-faking",
-          title: "Alignment Faking",
-          source: "research",
-        }),
-      ],
-      1
-    );
+  it("returns summary counts when source is all", () => {
+    insertPageSections(db, stmts, [makeSection({ source: "platform" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/api/messages", title: "Messages API", source: "api-reference" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/mcp", url: "https://code.claude.com/docs/en/mcp", title: "MCP", source: "code" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/news/post", url: "https://www.anthropic.com/news/post", title: "Post", source: "blog" })], 1);
     finalizeGeneration(db, stmts, 1);
 
-    const sections = listSections(stmts);
-    expect(sections).toHaveLength(2);
+    const counts = getSourceCounts(stmts);
+    const formatted = formatSourceSummary(counts);
 
-    const formatted = formatListSections(sections);
-
-    expect(formatted).toContain("## Model Pages (1 pages)");
-    expect(formatted).toContain("[Claude Opus]");
-    expect(formatted).toContain("## Research Papers (1 papers)");
-    expect(formatted).toContain("[Alignment Faking]");
+    expect(formatted).toMatch(/platform: \d+ pages/);
+    expect(formatted).toMatch(/code: \d+ pages/);
+    expect(formatted).toMatch(/blog: \d+ posts/);
+    expect(formatted).toContain("Use source filter");
+    // Should NOT contain markdown links or category grouping
+    expect(formatted).not.toContain("[");
+    expect(formatted).not.toContain("##");
   });
 
-  it("groups pages by source (platform, code, api-reference, blog)", () => {
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/docs/en/get-started/intro",
-          title: "Getting Started",
-          source: "platform",
-        }),
-      ],
-      1
-    );
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/docs/en/api/messages",
-          title: "Messages API",
-          source: "api-reference",
-        }),
-      ],
-      1
-    );
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/docs/en/mcp",
-          url: "https://code.claude.com/docs/en/mcp",
-          title: "MCP Integration",
-          source: "code",
-        }),
-      ],
-      1
-    );
-    insertPageSections(
-      db,
-      stmts,
-      [
-        makeSection({
-          path: "/news/claude-release",
-          url: "https://www.anthropic.com/news/claude-release",
-          title: "Claude Release",
-          source: "blog",
-        }),
-      ],
-      1
-    );
+  it("returns compact list when specific source selected", () => {
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/mcp", url: "https://code.claude.com/docs/en/mcp", title: "MCP", source: "code" })], 1);
     finalizeGeneration(db, stmts, 1);
 
-    const sections = listSections(stmts);
-    expect(sections).toHaveLength(4);
+    const sections = listSections(stmts, "code");
+    const formatted = formatCompactList(sections, "code");
 
-    const formatted = formatListSections(sections);
-
-    // Verify all source groups appear
-    expect(formatted).toContain("## Anthropic Platform Docs (1 pages)");
-    expect(formatted).toContain("## API Reference (1 pages)");
-    expect(formatted).toContain("## Claude Code Docs (1 pages)");
-    expect(formatted).toContain("## Anthropic Blog (1 posts)");
-
-    // Verify page listings
-    expect(formatted).toContain("[Getting Started]");
-    expect(formatted).toContain("[Messages API]");
-    expect(formatted).toContain("[MCP Integration]");
-    expect(formatted).toContain("[Claude Release]");
+    expect(formatted).toContain("Claude Code Docs (1 pages)");
+    expect(formatted).toContain("/docs/en/mcp — MCP");
+    expect(formatted).not.toContain("[");
+    expect(formatted).not.toContain("##");
   });
 });
 

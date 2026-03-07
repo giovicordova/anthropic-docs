@@ -1,8 +1,35 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { listSections } from "../database.js";
-import type { Statements } from "../types.js";
+import { listSections, getSourceCounts } from "../database.js";
+import type { Statements, SectionRow, SourceCount } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
+
+const SOURCE_LABELS: Record<string, string> = {
+  platform: "pages", code: "pages", "api-reference": "pages",
+  blog: "posts", model: "pages", research: "papers",
+};
+
+const SOURCE_NAMES: Record<string, string> = {
+  platform: "Anthropic Platform Docs",
+  code: "Claude Code Docs",
+  "api-reference": "API Reference",
+  blog: "Anthropic Blog",
+  model: "Model Pages",
+  research: "Research Papers",
+};
+
+function formatSummary(counts: SourceCount[]): string {
+  const lines = counts.map((c) => `${c.source}: ${c.count} ${SOURCE_LABELS[c.source] || "pages"}`);
+  return lines.join("\n") + "\n\nUse source filter to list pages for a specific source.";
+}
+
+function formatCompactList(sections: SectionRow[], source: string): string {
+  let output = `${SOURCE_NAMES[source] || source} (${sections.length} pages)\n\n`;
+  for (const s of sections) {
+    output += `${s.path} — ${s.title}\n`;
+  }
+  return output;
+}
 
 export function registerListSectionsTool(
   server: McpServer,
@@ -13,103 +40,39 @@ export function registerListSectionsTool(
     "list_doc_sections",
     {
       description:
-        "List all indexed documentation pages with their paths, grouped by source. Use this to discover what documentation is available or find the correct path for get_doc_page.",
+        "List indexed documentation pages. With no source filter, returns page counts per source. With a specific source filter, returns the full page listing for that source.",
       inputSchema: {
         source: z
           .enum(["all", "platform", "code", "api-reference", "blog", "model", "research"])
           .default("all")
-          .describe("Filter by source: 'platform', 'code', 'api-reference', 'blog', or 'all' (default)."),
+          .describe("Filter by source. 'all' (default) returns summary counts. Specific source returns full page list."),
       },
     },
     async ({ source }) => {
       const building = crawl.firstRunBuildingResponse();
       if (building) return building;
 
-      const sections = listSections(stmts, source);
-
-      if (sections.length === 0) {
+      if (source === "all") {
+        const counts = getSourceCounts(stmts);
+        if (counts.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "No pages indexed yet. The index may still be building — try again in a minute, or use refresh_index." }],
+          };
+        }
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: "No pages indexed yet. The index may still be building — try again in a minute, or use refresh_index.",
-            },
-          ],
+          content: [{ type: "text" as const, text: formatSummary(counts) }],
         };
       }
 
-      const platformPages = sections.filter((s) => s.source === "platform");
-      const codePages = sections.filter((s) => s.source === "code");
-      const apiRefPages = sections.filter((s) => s.source === "api-reference");
-
-      let output = `# Documentation Index\n\n${sections.length} pages indexed.\n\n`;
-
-      if (platformPages.length > 0) {
-        output += `## Anthropic Platform Docs (${platformPages.length} pages)\n\n`;
-        const grouped: Record<string, { path: string; title: string }[]> = {};
-        for (const s of platformPages) {
-          const parts = s.path.split("/").filter(Boolean);
-          const category = parts.length > 2 ? parts[2] : "root";
-          if (!grouped[category]) grouped[category] = [];
-          grouped[category].push(s);
-        }
-        for (const [category, pages] of Object.entries(grouped).sort()) {
-          output += `### ${category.replace(/-/g, " ")}\n\n`;
-          for (const p of pages) {
-            output += `- [${p.title}](${p.path})\n`;
-          }
-          output += "\n";
-        }
-      }
-
-      if (apiRefPages.length > 0) {
-        output += `## API Reference (${apiRefPages.length} pages)\n\n`;
-        for (const p of apiRefPages) {
-          output += `- [${p.title}](${p.path})\n`;
-        }
-        output += "\n";
-      }
-
-      if (codePages.length > 0) {
-        output += `## Claude Code Docs (${codePages.length} pages)\n\n`;
-        for (const p of codePages) {
-          output += `- [${p.title}](${p.path})\n`;
-        }
-        output += "\n";
-      }
-
-      const blogPages = sections.filter((s) => s.source === "blog");
-
-      if (blogPages.length > 0) {
-        output += `## Anthropic Blog (${blogPages.length} posts)\n\n`;
-        for (const p of blogPages) {
-          output += `- [${p.title}](${p.path})\n`;
-        }
-        output += "\n";
-      }
-
-      const modelPages = sections.filter((s) => s.source === "model");
-
-      if (modelPages.length > 0) {
-        output += `## Model Pages (${modelPages.length} pages)\n\n`;
-        for (const p of modelPages) {
-          output += `- [${p.title}](${p.path})\n`;
-        }
-        output += "\n";
-      }
-
-      const researchPages = sections.filter((s) => s.source === "research");
-
-      if (researchPages.length > 0) {
-        output += `## Research Papers (${researchPages.length} papers)\n\n`;
-        for (const p of researchPages) {
-          output += `- [${p.title}](${p.path})\n`;
-        }
-        output += "\n";
+      const sections = listSections(stmts, source);
+      if (sections.length === 0) {
+        return {
+          content: [{ type: "text" as const, text: `No ${source} pages indexed yet. The index may still be building — try again in a minute, or use refresh_index.` }],
+        };
       }
 
       return {
-        content: [{ type: "text" as const, text: output }],
+        content: [{ type: "text" as const, text: formatCompactList(sections, source) }],
       };
     }
   );
