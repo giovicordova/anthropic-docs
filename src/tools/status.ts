@@ -3,7 +3,6 @@ import { getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
 import { STALE_HOURS, BLOG_STALE_HOURS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../config.js";
-import { logger } from "../logger.js";
 
 /** Minimal interface for status text building (testable without full CrawlManager) */
 export interface StatusCrawlInfo {
@@ -84,10 +83,8 @@ export function registerStatusTool(
       inputSchema: {},
     },
     async () => {
-      const _toolStart = Date.now();
       const status = buildStatusText(stmts, crawl);
 
-      logger.toolCall("index_status", {}, Date.now() - _toolStart, { success: true, resultSummary: "OK" });
       return {
         content: [{ type: "text" as const, text: status }],
       };

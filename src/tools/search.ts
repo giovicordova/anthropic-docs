@@ -4,7 +4,6 @@ import { searchDocs, getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
 import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS } from "../config.js";
-import { logger } from "../logger.js";
 
 const ALL_SOURCES = ["platform", "code", "api-reference", "blog", "model", "research"];
 
@@ -83,12 +82,8 @@ export function registerSearchTool(
       },
     },
     async ({ query, source, limit }) => {
-      const _toolStart = Date.now();
       const building = crawl.firstRunBuildingResponse();
-      if (building) {
-        logger.toolCall("search_anthropic_docs", { query, source, limit }, Date.now() - _toolStart, { success: true, resultSummary: "building" });
-        return building;
-      }
+      if (building) return building;
 
       try {
         const results = searchDocs(stmts, query, limit, source);
@@ -103,7 +98,6 @@ export function registerSearchTool(
         const footer = buildMetadataFooter(stmts, footerSources);
 
         if (results.length === 0) {
-          logger.toolCall("search_anthropic_docs", { query, source, limit }, Date.now() - _toolStart, { success: true, resultSummary: "no results" });
           return {
             content: [
               {
@@ -121,12 +115,10 @@ export function registerSearchTool(
           )
           .join("\n\n");
 
-        logger.toolCall("search_anthropic_docs", { query, source, limit }, Date.now() - _toolStart, { success: true, resultSummary: `${results.length} results` });
         return {
           content: [{ type: "text" as const, text: formatted + footer }],
         };
       } catch (err) {
-        logger.toolCall("search_anthropic_docs", { query, source, limit }, Date.now() - _toolStart, { success: false, resultSummary: `error: ${(err as Error).message}` });
         return {
           content: [
             {

@@ -2,7 +2,13 @@ node_modules/
 dist/
 *.db
 .DS_Store
-.claude/
 .planning/
 docs/
 smoke_stderr.txt
+AUDIT-REPORT.md
+
+# Claude Code personal files
+.claude/settings.local.json
+.claude/memory/
+.claude/plans/
+.claude/projects/

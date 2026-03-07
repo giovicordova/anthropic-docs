@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "anthropic-docs": {
+      "command": "node",
+      "args": ["dist/index.js"]
+    }
+  }
+}

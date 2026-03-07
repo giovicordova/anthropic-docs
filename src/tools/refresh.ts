@@ -2,7 +2,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getMetadata } from "../database.js";
 import type { Statements } from "../types.js";
 import type { CrawlManager } from "../crawl.js";
-import { logger } from "../logger.js";
 
 export function registerRefreshTool(
   server: McpServer,
@@ -17,9 +16,7 @@ export function registerRefreshTool(
       inputSchema: {},
     },
     async () => {
-      const _toolStart = Date.now();
       if (crawl.isAnyCrawling()) {
-        logger.toolCall("refresh_index", {}, Date.now() - _toolStart, { success: true, resultSummary: "already crawling" });
         return {
           content: [
             {
@@ -37,7 +34,6 @@ export function registerRefreshTool(
         .crawlAll()
         .catch((err) => console.error("[server] Refresh failed:", (err as Error).message));
 
-      logger.toolCall("refresh_index", {}, Date.now() - _toolStart, { success: true, resultSummary: "started" });
       return {
         content: [
           {
