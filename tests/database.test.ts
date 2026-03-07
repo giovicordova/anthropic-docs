@@ -509,4 +509,5 @@ describe("database", () => {
     const newDocResult = getDocPage(stmts, "/docs/en/new-doc");
     expect(newDocResult).not.toBeNull();
   });
+
 });

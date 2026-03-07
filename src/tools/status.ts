@@ -19,7 +19,6 @@ export function buildStatusText(stmts: Statements, crawl: StatusCrawlInfo): stri
   const lastModelCrawl = getMetadata(stmts, "last_model_crawl_timestamp");
   const researchPageCount = getMetadata(stmts, "research_page_count") || "0";
   const lastResearchCrawl = getMetadata(stmts, "last_research_crawl_timestamp");
-
   let ageDays = "unknown";
   if (lastCrawl) {
     const age = Date.now() - new Date(lastCrawl).getTime();

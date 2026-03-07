@@ -6,7 +6,6 @@ import { registerGetPageTool } from "./get-page.js";
 import { registerListSectionsTool } from "./list-sections.js";
 import { registerRefreshTool } from "./refresh.js";
 import { registerStatusTool } from "./status.js";
-
 export function registerTools(
   server: McpServer,
   stmts: Statements,

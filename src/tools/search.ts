@@ -8,11 +8,10 @@ import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS } fr
 const ALL_SOURCES = ["platform", "code", "api-reference", "blog", "model", "research"];
 
 export function buildMetadataFooter(stmts: Statements, sources: string[]): string {
-  const docSources = sources.filter((s) => s !== "blog" && s !== "model" && s !== "research");
+  const docSources = sources.filter((s) => s !== "blog" && s !== "model" && s !== "research" && s !== "mcp-spec");
   const hasBlog = sources.includes("blog");
   const hasModel = sources.includes("model");
   const hasResearch = sources.includes("research");
-
   const parts: string[] = [];
   const staleNames: string[] = [];
 
