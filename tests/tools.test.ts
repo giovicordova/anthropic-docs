@@ -10,7 +10,7 @@ import {
   getMetadata,
   setMetadata,
 } from "../src/database.js";
-import type { PageSection, SearchResult, GetDocPageResult, SectionRow } from "../src/types.js";
+import type { PageSection, SearchResult, GetDocPageResult, SectionRow, SourceCount } from "../src/types.js";
 import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
 import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../src/config.js";
@@ -33,8 +33,11 @@ import { buildStatusText } from "../src/tools/status.js";
 function formatSearchResults(results: SearchResult[]): string {
   return results
     .map(
-      (r, i) =>
-        `${i + 1}. **${r.title}**${r.sectionHeading ? ` > ${r.sectionHeading}` : ""}\n   URL: ${r.url}\n   ${r.snippet}`
+      (r) => {
+        const heading = r.sectionHeading ? ` > ${r.sectionHeading}` : "";
+        const path = new URL(r.url).pathname;
+        return `${r.title}${heading} | ${path}\n${r.snippet}`;
+      }
     )
     .join("\n\n");
 }
@@ -176,7 +179,7 @@ describe("tool response format: search_anthropic_docs", () => {
     expect(msg).toBeNull();
   });
 
-  it("returns formatted numbered results with title, URL, snippet", () => {
+  it("returns compact results with title, path, snippet (no markdown)", () => {
     insertPageSections(
       db,
       stmts,
@@ -206,11 +209,13 @@ describe("tool response format: search_anthropic_docs", () => {
     expect(results.length).toBeGreaterThan(0);
 
     const formatted = formatSearchResults(results);
-    // Verify numbered format
-    expect(formatted).toMatch(/^1\. \*\*/);
-    // Verify URL line
-    expect(formatted).toContain("URL: https://");
-    // Verify section heading appears
+    // Verify compact format: no numbered list, no bold, no "URL:" label
+    expect(formatted).not.toMatch(/^\d+\. \*\*/);
+    expect(formatted).not.toContain("URL:");
+    expect(formatted).not.toContain("**");
+    // Verify path-only (no full URL)
+    expect(formatted).toContain(" | /docs/en/");
+    // Verify section heading separator
     expect(formatted).toContain(" > ");
   });
 

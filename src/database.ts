@@ -82,8 +82,8 @@ export function prepareStatements(db: Database.Database): Statements {
     ),
     search: db.prepare(`
       SELECT
-        p.title, p.url, p.section_heading, p.source,
-        snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
+        p.title, p.url, p.path, p.section_heading, p.source,
+        snippet(pages_fts, 2, '', '', '...', 15) as snippet,
         bm25(pages_fts, 10.0, 5.0, 1.0) as rank
       FROM pages_fts
       JOIN pages p ON p.id = pages_fts.rowid
@@ -93,8 +93,8 @@ export function prepareStatements(db: Database.Database): Statements {
     `),
     searchWithSource: db.prepare(`
       SELECT
-        p.title, p.url, p.section_heading, p.source,
-        snippet(pages_fts, 2, '<mark>', '</mark>', '...', 25) as snippet,
+        p.title, p.url, p.path, p.section_heading, p.source,
+        snippet(pages_fts, 2, '', '', '...', 15) as snippet,
         bm25(pages_fts, 10.0, 5.0, 1.0) as rank
       FROM pages_fts
       JOIN pages p ON p.id = pages_fts.rowid
@@ -231,6 +231,7 @@ export function searchDocs(
     return rows.map((row) => ({
       title: row.title,
       url: row.url,
+      path: row.path,
       sectionHeading: row.section_heading,
       snippet: row.snippet,
       relevanceScore: Math.abs(row.rank),

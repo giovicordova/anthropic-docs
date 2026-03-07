@@ -109,10 +109,10 @@ export function registerSearchTool(
         }
 
         const formatted = results
-          .map(
-            (r, i) =>
-              `${i + 1}. **${r.title}**${r.sectionHeading ? ` > ${r.sectionHeading}` : ""}\n   URL: ${r.url}\n   ${r.snippet}`
-          )
+          .map((r) => {
+            const heading = r.sectionHeading ? ` > ${r.sectionHeading}` : "";
+            return `${r.title}${heading} | ${r.path}\n${r.snippet}`;
+          })
           .join("\n\n");
 
         return {
