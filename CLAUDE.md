@@ -27,15 +27,18 @@ Claude Code ↔ stdio ↔ MCP Server (index.ts) ↔ SQLite FTS5 DB
             anthropic.com/sitemap.xml → HTML    (weekly, incremental)
 ```
 
-Seven source files, each with a single responsibility:
+Source modules in `src/`:
 
-- **src/types.ts** — Shared interfaces (`ParsedPage`, `Section`, `PageSection`, `SearchResult`, `GetDocPageResult`, `Statements`). No logic.
-- **src/config.ts** — Centralized constants (timeouts, URLs, thresholds, DB path). All magic numbers live here.
-- **src/fetch.ts** — Shared `fetchWithTimeout` utility used by both parsers. Timeout-based abort, User-Agent header.
-- **src/parser.ts** — Fetches and parses `llms-full.txt` from both sources. Splits pages at `# heading` + `URL:`/`Source:` boundaries, splits content into sections at h2/h3, filters stubs, splits oversized sections at h4. Pure markdown parsing, no HTML.
-- **src/blog-parser.ts** — Fetches blog posts from anthropic.com via sitemap.xml. Parses sitemap XML for blog URLs (/news, /research, /engineering), fetches HTML pages in batches (10 concurrent, 200ms delay), converts HTML to markdown via `node-html-markdown`, extracts article content from `<article>` or `<main>` tags. Incremental: only fetches URLs not already indexed (sitemap-diff).
-- **src/database.ts** — SQLite schema with `generation` column for atomic crawl swap (blog rows excluded from generation swap and orphan cleanup), FTS5 virtual table (BM25 weighted: title 10x, heading 5x, content 1x), search with query preprocessing and FTS5 error handling, `get_doc_page` with 3-step fuzzy matching + disambiguation, typed row interfaces (`SearchRow`, `PageRow`, `SectionRow`), metadata tracking, cached prepared statements via `Statements` interface, batched section inserts per page, `busy_timeout` for multi-process safety, and `getIndexedBlogUrls` for sitemap-diff. DB location: `~/.claude/mcp-data/anthropic-docs/docs.db`.
-- **src/index.ts** — MCP server entry point. Registers 5 tools (`search_anthropic_docs`, `get_doc_page`, `list_doc_sections`, `refresh_index`, `index_status`), manages stdio transport, separate crawl state tracking for docs and blog (idle/crawling/failed), first-run detection, daily staleness check for docs, weekly staleness check for blog, sequenced refresh (doc crawl completes before blog crawl starts), and orphaned generation cleanup on startup.
+- **types.ts** — Shared interfaces, no logic
+- **config.ts** — Centralized constants (timeouts, URLs, thresholds, DB path)
+- **fetch.ts** — HTTP fetch with timeout, conditional fetch, content hashing
+- **parser.ts** — Parses `llms-full.txt` into pages and sections
+- **blog-parser.ts** — Fetches blog posts via sitemap, converts HTML → markdown
+- **database.ts** — SQLite FTS5 schema, BM25 search, fuzzy page lookup
+- **index.ts** — MCP server entry point, 5 tools, crawl state management
+- **crawl.ts** — Orchestrates incremental crawls per source, staleness checks
+- **logger.ts** — Session logging for crawls, tool calls, and errors
+- **tools/** — Individual tool implementations (search, get-page, list-sections, refresh, status)
 
 ## Data Sources
 
