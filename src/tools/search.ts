@@ -66,7 +66,7 @@ export function registerSearchTool(
     "search_anthropic_docs",
     {
       description:
-        "Full-text search across all indexed Anthropic documentation (API/platform docs and Claude Code docs). Returns ranked results with page title, URL, section heading, and content snippet. Use this tool when you need to find documentation about a specific topic, API endpoint, SDK method, or concept. Results are ranked by relevance using BM25 with title matches weighted highest. For broad queries, increase the limit; for precise lookups, use get_doc_page instead.",
+        "Full-text search across indexed Anthropic documentation. Returns ranked results with title, path, section heading, and content snippet. Use specific terms for best results. For full page content, use get_doc_page with the path from results.",
       inputSchema: {
         query: z.string().describe("Search query string. Use specific terms for best results."),
         source: z
