@@ -16,6 +16,9 @@ import {
   getIndexedBlogUrlsWithTimestamps,
   deleteBlogPages,
   retagResearchPages,
+  getPageOutline,
+  getPageSections,
+  getSourceCounts,
 } from "../src/database.js";
 import type { PageSection } from "../src/types.js";
 
@@ -336,6 +339,101 @@ describe("database", () => {
     // Old doc from gen 1 should be gone
     const oldDocResult = getDocPage(stmts, "/docs/en/old-doc");
     expect(oldDocResult).toBeNull();
+  });
+
+  it("getPageOutline returns section headings for a path", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: null, content: "Intro content for the page." }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Authentication", content: "Auth section content here." }),
+      makeSection({ sectionOrder: 2, sectionHeading: "Error Handling", content: "Error section content here." }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const outline = getPageOutline(stmts, "/docs/en/test");
+    expect(outline).not.toBeNull();
+    expect(outline!.title).toBe("Test Page");
+    expect(outline!.url).toBe("https://platform.claude.com/docs/en/test");
+    expect(outline!.headings).toEqual([null, "Authentication", "Error Handling"]);
+  });
+
+  it("getPageOutline returns null for missing path", () => {
+    insertPageSections(db, stmts, [makeSection()], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const outline = getPageOutline(stmts, "/nonexistent");
+    expect(outline).toBeNull();
+  });
+
+  it("getPageOutline fuzzy-matches by path suffix", () => {
+    insertPageSections(db, stmts, [makeSection()], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const outline = getPageOutline(stmts, "/test");
+    expect(outline).not.toBeNull();
+  });
+
+  it("getPageOutline returns disambiguation for multiple path matches", () => {
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/a/test", url: "https://platform.claude.com/docs/en/a/test", title: "A Test" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/b/test", url: "https://platform.claude.com/docs/en/b/test", title: "B Test" })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const outline = getPageOutline(stmts, "/test");
+    expect(outline).not.toBeNull();
+    expect(outline!.type).toBe("disambiguation");
+  });
+
+  it("getPageSections filters by section heading substring", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: null, content: "Intro" }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Authentication", content: "Auth details here." }),
+      makeSection({ sectionOrder: 2, sectionHeading: "Error Handling", content: "Error details here." }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const result = getPageSections(stmts, "/docs/en/test", "auth");
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("page");
+    if (result!.type === "page") {
+      expect(result!.sections).toHaveLength(1);
+      expect(result!.sections[0].heading).toBe("Authentication");
+      expect(result!.sections[0].content).toBe("Auth details here.");
+    }
+  });
+
+  it("getPageSections returns multiple matching sections", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: "Tool basics", content: "Basics content." }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Tool advanced", content: "Advanced content." }),
+      makeSection({ sectionOrder: 2, sectionHeading: "Unrelated", content: "Other content." }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const result = getPageSections(stmts, "/docs/en/test", "tool");
+    expect(result).not.toBeNull();
+    if (result!.type === "page") {
+      expect(result!.sections).toHaveLength(2);
+    }
+  });
+
+  it("getPageSections returns null for missing path", () => {
+    insertPageSections(db, stmts, [makeSection()], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const result = getPageSections(stmts, "/nonexistent", "anything");
+    expect(result).toBeNull();
+  });
+
+  it("getSourceCounts returns page count per source", () => {
+    insertPageSections(db, stmts, [makeSection({ source: "platform" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/mcp", url: "https://code.claude.com/docs/en/mcp", title: "MCP", source: "code" })], 1);
+    insertPageSections(db, stmts, [makeSection({ path: "/docs/en/mcp2", url: "https://code.claude.com/docs/en/mcp2", title: "MCP2", source: "code" })], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const counts = getSourceCounts(stmts);
+    expect(counts).toEqual([
+      { source: "code", count: 2 },
+      { source: "platform", count: 1 },
+    ]);
   });
 
   it("retagResearchPages converts blog /research/ rows to source research", () => {

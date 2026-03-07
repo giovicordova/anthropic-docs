@@ -84,6 +84,32 @@ export interface SectionRow {
   source: string;
 }
 
+export interface OutlineResult {
+  type: "outline";
+  title: string;
+  url: string;
+  path: string;
+  headings: (string | null)[];
+}
+
+export interface SectionContent {
+  heading: string | null;
+  content: string;
+}
+
+export type GetPageOutlineResult =
+  | OutlineResult
+  | { type: "disambiguation"; matches: { path: string; title: string; url: string }[] };
+
+export type GetPageSectionsResult =
+  | { type: "page"; title: string; url: string; path: string; sections: SectionContent[] }
+  | { type: "disambiguation"; matches: { path: string; title: string; url: string }[] };
+
+export interface SourceCount {
+  source: string;
+  count: number;
+}
+
 // --- Sitemap entry ---
 
 export interface SitemapEntry {
@@ -118,4 +144,11 @@ export interface Statements {
   getMetadata: Database.Statement;
   setMetadata: Database.Statement;
   getCurrentGen: Database.Statement;
+  outlineExact: Database.Statement;
+  outlineSuffix: Database.Statement;
+  outlineSegment: Database.Statement;
+  sectionFilter: Database.Statement;
+  sectionFilterSuffix: Database.Statement;
+  sectionFilterSegment: Database.Statement;
+  sourceCounts: Database.Statement;
 }

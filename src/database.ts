@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { DB_DIR } from "./config.js";
-import type { PageSection, SearchResult, GetDocPageResult, Statements, SearchRow, PageRow, SectionRow } from "./types.js";
+import type { PageSection, SearchResult, GetDocPageResult, Statements, SearchRow, PageRow, SectionRow, GetPageOutlineResult, GetPageSectionsResult, SourceCount } from "./types.js";
 
 const DB_PATH = path.join(DB_DIR, "docs.db");
 
@@ -124,6 +124,27 @@ export function prepareStatements(db: Database.Database): Statements {
     ),
     getCurrentGen: db.prepare(
       "SELECT value FROM metadata WHERE key = 'current_generation'"
+    ),
+    outlineExact: db.prepare(
+      "SELECT DISTINCT title, url, path, section_heading FROM pages WHERE path = ? ORDER BY section_order"
+    ),
+    outlineSuffix: db.prepare(
+      "SELECT DISTINCT title, url, path, section_heading FROM pages WHERE path LIKE ? ORDER BY section_order"
+    ),
+    outlineSegment: db.prepare(
+      "SELECT DISTINCT title, url, path, section_heading FROM pages WHERE path LIKE ? ORDER BY section_order"
+    ),
+    sectionFilter: db.prepare(
+      "SELECT title, url, path, section_heading, content FROM pages WHERE path = ? AND (section_heading LIKE ? OR (section_heading IS NULL AND ? = '%%')) ORDER BY section_order"
+    ),
+    sectionFilterSuffix: db.prepare(
+      "SELECT title, url, path, section_heading, content FROM pages WHERE path LIKE ? AND (section_heading LIKE ? OR (section_heading IS NULL AND ? = '%%')) ORDER BY section_order"
+    ),
+    sectionFilterSegment: db.prepare(
+      "SELECT title, url, path, section_heading, content FROM pages WHERE path LIKE ? AND (section_heading LIKE ? OR (section_heading IS NULL AND ? = '%%')) ORDER BY section_order"
+    ),
+    sourceCounts: db.prepare(
+      "SELECT source, COUNT(DISTINCT path) as count FROM pages GROUP BY source ORDER BY source"
     ),
   };
 }
@@ -264,6 +285,82 @@ export function listSections(
     return stmts.listBySource.all(source) as SectionRow[];
   }
   return stmts.listAll.all() as SectionRow[];
+}
+
+export function getPageOutline(
+  stmts: Statements,
+  searchPath: string
+): GetPageOutlineResult | null {
+  interface OutlineRow { title: string; url: string; path: string; section_heading: string | null }
+
+  let rows = stmts.outlineExact.all(searchPath) as OutlineRow[];
+  if (rows.length === 0) {
+    rows = stmts.outlineSuffix.all(`%${searchPath}`) as OutlineRow[];
+  }
+  if (rows.length === 0) {
+    rows = stmts.outlineSegment.all(`%${searchPath}/%`) as OutlineRow[];
+  }
+  if (rows.length === 0) return null;
+
+  const distinctPaths = [...new Set(rows.map((r) => r.path))];
+
+  if (distinctPaths.length === 1) {
+    return {
+      type: "outline",
+      title: rows[0].title,
+      url: rows[0].url,
+      path: rows[0].path,
+      headings: rows.map((r) => r.section_heading),
+    };
+  }
+
+  const matches = distinctPaths.map((p) => {
+    const row = rows.find((r) => r.path === p)!;
+    return { path: p, title: row.title, url: row.url };
+  });
+
+  return { type: "disambiguation", matches };
+}
+
+export function getPageSections(
+  stmts: Statements,
+  searchPath: string,
+  sectionFilter: string
+): GetPageSectionsResult | null {
+  interface SectionFilterRow { title: string; url: string; path: string; section_heading: string | null; content: string }
+  const likePattern = `%${sectionFilter}%`;
+
+  let rows = stmts.sectionFilter.all(searchPath, likePattern, likePattern) as SectionFilterRow[];
+  if (rows.length === 0) {
+    rows = stmts.sectionFilterSuffix.all(`%${searchPath}`, likePattern, likePattern) as SectionFilterRow[];
+  }
+  if (rows.length === 0) {
+    rows = stmts.sectionFilterSegment.all(`%${searchPath}/%`, likePattern, likePattern) as SectionFilterRow[];
+  }
+  if (rows.length === 0) return null;
+
+  const distinctPaths = [...new Set(rows.map((r) => r.path))];
+
+  if (distinctPaths.length === 1) {
+    return {
+      type: "page",
+      title: rows[0].title,
+      url: rows[0].url,
+      path: rows[0].path,
+      sections: rows.map((r) => ({ heading: r.section_heading, content: r.content })),
+    };
+  }
+
+  const matches = distinctPaths.map((p) => {
+    const row = rows.find((r) => r.path === p)!;
+    return { path: p, title: row.title, url: row.url };
+  });
+
+  return { type: "disambiguation", matches };
+}
+
+export function getSourceCounts(stmts: Statements): SourceCount[] {
+  return stmts.sourceCounts.all() as SourceCount[];
 }
 
 export function getMetadata(stmts: Statements, key: string): string | null {
