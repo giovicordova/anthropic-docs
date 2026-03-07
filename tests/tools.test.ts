@@ -10,8 +10,10 @@ import {
   getMetadata,
   setMetadata,
   getSourceCounts,
+  getPageOutline,
+  getPageSections,
 } from "../src/database.js";
-import type { PageSection, SearchResult, GetDocPageResult, SectionRow, SourceCount } from "../src/types.js";
+import type { PageSection, SearchResult, GetDocPageResult, SectionRow, SourceCount, OutlineResult, SectionContent } from "../src/types.js";
 import type Database from "better-sqlite3";
 import type { Statements } from "../src/types.js";
 import { STALE_DAYS, BLOG_STALE_DAYS, MODEL_STALE_DAYS, RESEARCH_STALE_DAYS, MODEL_STALE_HOURS, RESEARCH_STALE_HOURS } from "../src/config.js";
@@ -295,6 +297,89 @@ describe("tool response format: list_doc_sections", () => {
     expect(formatted).toContain("/docs/en/mcp — MCP");
     expect(formatted).not.toContain("[");
     expect(formatted).not.toContain("##");
+  });
+});
+
+// --- Format helpers for get_doc_page section modes ---
+
+function formatOutline(outline: OutlineResult): string {
+  const headings = outline.headings
+    .map((h, i) => `${i + 1}. ${h ?? "(intro)"}`)
+    .join("\n");
+  return `${outline.title}\n${outline.path}\n\nSections:\n${headings}`;
+}
+
+function formatSectionResult(result: { type: "page"; title: string; url: string; path: string; sections: SectionContent[] }): string {
+  return result.sections
+    .map((s) => {
+      const heading = s.heading ? `${result.title} > ${s.heading}` : result.title;
+      return `${heading}\n${result.path}\n\n${s.content}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+describe("tool response format: get_doc_page (section modes)", () => {
+  let db: Database.Database;
+  let stmts: Statements;
+
+  beforeEach(() => {
+    db = initDatabase(":memory:");
+    stmts = prepareStatements(db);
+  });
+
+  it("outline mode returns title, path, and section headings", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: null, content: "Intro" }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Authentication", content: "Auth stuff" }),
+      makeSection({ sectionOrder: 2, sectionHeading: "Error Handling", content: "Error stuff" }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const outline = getPageOutline(stmts, "/docs/en/test");
+    expect(outline).not.toBeNull();
+    expect(outline!.type).toBe("outline");
+    if (outline!.type === "outline") {
+      const text = formatOutline(outline);
+      expect(text).toContain("Test Page");
+      expect(text).toContain("/docs/en/test");
+      expect(text).toContain("1. (intro)");
+      expect(text).toContain("2. Authentication");
+      expect(text).toContain("3. Error Handling");
+      expect(text).not.toContain("Auth stuff");
+    }
+  });
+
+  it("section filter returns only matching sections", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: null, content: "Intro" }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Authentication", content: "Auth details" }),
+      makeSection({ sectionOrder: 2, sectionHeading: "Error Handling", content: "Error details" }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const result = getPageSections(stmts, "/docs/en/test", "auth");
+    expect(result).not.toBeNull();
+    if (result!.type === "page") {
+      const text = formatSectionResult(result);
+      expect(text).toContain("Test Page > Authentication");
+      expect(text).toContain("Auth details");
+      expect(text).not.toContain("Error details");
+    }
+  });
+
+  it("section=all returns full page (current behavior)", () => {
+    insertPageSections(db, stmts, [
+      makeSection({ sectionOrder: 0, sectionHeading: null, content: "Intro content" }),
+      makeSection({ sectionOrder: 1, sectionHeading: "Details", content: "Detail content" }),
+    ], 1);
+    finalizeGeneration(db, stmts, 1);
+
+    const result = getDocPage(stmts, "/docs/en/test");
+    expect(result).not.toBeNull();
+    if (result!.type === "page") {
+      expect(result!.content).toContain("Intro content");
+      expect(result!.content).toContain("Detail content");
+    }
   });
 });
 
